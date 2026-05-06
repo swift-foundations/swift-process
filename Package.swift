@@ -1,0 +1,72 @@
+// swift-tools-version: 6.3.1
+
+// ===----------------------------------------------------------------------===//
+//
+// This source file is part of the swift-process open source project
+//
+// Copyright (c) 2026 Coen ten Thije Boonkkamp and the swift-process project authors
+// Licensed under Apache License v2.0
+//
+// See LICENSE for license information
+//
+// ===----------------------------------------------------------------------===//
+
+import PackageDescription
+
+let package = Package(
+    name: "swift-process",
+    platforms: [
+        .macOS(.v26),
+        .iOS(.v26),
+        .tvOS(.v26),
+        .watchOS(.v26),
+        .visionOS(.v26)
+    ],
+    products: [
+        .library(name: "Process", targets: ["Process"])
+    ],
+    dependencies: [
+        .package(path: "../../swift-primitives/swift-path-primitives"),
+        .package(path: "../swift-kernel"),
+        .package(path: "../swift-posix"),
+        .package(path: "../swift-strings")
+    ],
+    targets: [
+        .target(
+            name: "Process",
+            dependencies: [
+                .product(name: "Kernel", package: "swift-kernel"),
+                .product(name: "Path Primitives", package: "swift-path-primitives"),
+                .product(name: "POSIX Kernel", package: "swift-posix"),
+                .product(name: "Strings", package: "swift-strings")
+            ],
+            path: "Sources/Process"
+        ),
+        .testTarget(
+            name: "Process Tests",
+            dependencies: [
+                "Process"
+            ]
+        )
+    ],
+    swiftLanguageModes: [.v6]
+)
+
+for target in package.targets where ![.system, .binary, .plugin, .macro].contains(target.type) {
+    let ecosystem: [SwiftSetting] = [
+        .strictMemorySafety(),
+        .enableUpcomingFeature("ExistentialAny"),
+        .enableUpcomingFeature("InternalImportsByDefault"),
+        .enableUpcomingFeature("MemberImportVisibility"),
+        .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+        .enableExperimentalFeature("LifetimeDependence"),
+        .enableExperimentalFeature("Lifetimes"),
+        .enableExperimentalFeature("SuppressedAssociatedTypes"),
+        .enableUpcomingFeature("InferIsolatedConformances"),
+        .enableUpcomingFeature("LifetimeDependence"),
+    ]
+
+    let package: [SwiftSetting] = []
+
+    target.swiftSettings = (target.swiftSettings ?? []) + ecosystem + package
+}
