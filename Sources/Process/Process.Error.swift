@@ -38,11 +38,18 @@ extension Process {
         /// does not yet understand.
         case unrecognizedStatus
 
-        /// A non-``Stream/inherit`` stream policy was supplied.
-        ///
-        /// v1 implements ``Stream/inherit`` only. Reserved cases
-        /// trap here to make the unimplemented surface explicit
-        /// rather than silently inheriting the wrong stream.
+        /// Pipe / drain failure during a ``Process/Stream/pipe``
+        /// capture: pipe creation, parent-side close after spawn,
+        /// or read-to-EOF failed.
+        case capture(Error_Primitives.Error.Code)
+
+        /// A stream policy not yet supported on this entry point
+        /// was supplied. Currently emitted by ``Spawn/spawn(_:)``
+        /// when the configuration requests ``Stream/pipe`` or
+        /// sets ``Spawn/Configuration/workingDirectory`` (which go
+        /// through ``Spawn/run(_:)``), and by ``Spawn/run(_:)``
+        /// when ``Stream/pipe`` is requested for ``stdin``
+        /// (reserved for v3).
         case streamPolicyUnsupported
 
         /// The platform does not support subprocess spawning.

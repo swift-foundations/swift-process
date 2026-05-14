@@ -16,30 +16,32 @@ import Testing
 struct ProcessSpawnTests {
     @Test("Spawning /usr/bin/true returns exit code 0")
     func spawnTrue() throws {
-        let status = try Process.Spawn.run(
+        let output = try Process.Spawn.run(
             Process.Spawn.Configuration(executable: "/usr/bin/true")
         )
-        #expect(status == .exited(code: 0))
+        #expect(output.status == .exited(code: 0))
+        #expect(output.stdout == nil)
+        #expect(output.stderr == nil)
     }
 
     @Test("Spawning /usr/bin/false returns exit code 1")
     func spawnFalse() throws {
-        let status = try Process.Spawn.run(
+        let output = try Process.Spawn.run(
             Process.Spawn.Configuration(executable: "/usr/bin/false")
         )
-        #expect(status == .exited(code: 1))
+        #expect(output.status == .exited(code: 1))
     }
 
     @Test("Spawning /usr/bin/env with explicit environment yields exit 0")
     func spawnWithEnvironment() throws {
-        let status = try Process.Spawn.run(
+        let output = try Process.Spawn.run(
             Process.Spawn.Configuration(
                 executable: "/usr/bin/env",
                 arguments: ["true"],
                 environment: ["PATH": "/usr/bin:/bin"]
             )
         )
-        #expect(status == .exited(code: 0))
+        #expect(output.status == .exited(code: 0))
     }
 
     @Test("Interior NUL in executable path is rejected at index 0")

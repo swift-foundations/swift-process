@@ -19,9 +19,14 @@ extension Process {
     /// Two entry points:
     ///
     /// - ``spawn(_:)`` — spawns and returns a ``Process/Handle``;
-    ///   caller invokes ``Process/Handle/wait()`` themselves.
-    /// - ``run(_:)`` — spawns and waits in one call, returning
-    ///   the child's ``Process/Status``.
+    ///   caller invokes ``Process/Handle/wait()`` themselves. Pipes
+    ///   and working-directory configuration are NOT supported on
+    ///   this path; use ``run(_:)`` for those.
+    /// - ``run(_:)`` — spawns, drains any ``Process/Stream/pipe``
+    ///   captures, waits, and returns the bundled
+    ///   ``Process/Output``. Supports the full configuration
+    ///   surface (``Process/Stream/pipe`` streams,
+    ///   ``Process/Spawn/Configuration/workingDirectory``).
     ///
     /// Both go through ``POSIX/Kernel/Process/Spawn`` (which is a
     /// thin pass-through over ``ISO_9945/Kernel/Process/Spawn``'s
@@ -38,17 +43,20 @@ extension Process.Spawn {
     /// Returns a ``Process/Handle`` that the caller must consume
     /// via ``Process/Handle/wait()`` to collect the exit status.
     ///
+    /// This entry point supports only ``Process/Stream/inherit``
+    /// streams and inherits the parent's current working directory.
+    /// Configurations that request ``Process/Stream/pipe`` or set
+    /// ``Process/Spawn/Configuration/workingDirectory`` MUST use
+    /// ``run(_:)``.
+    ///
     /// - Parameter configuration: spawn parameters.
     /// - Returns: a handle to the spawned child.
     /// - Throws: ``Process/Error`` on configuration validation
-    ///   failure (interior NUL bytes), unsupported stream policy,
-    ///   or `posix_spawn(3)` failure.
+    ///   failure or `posix_spawn(3)` failure.
     public static func spawn(
         _ configuration: Configuration
     ) throws(Process.Error) -> Process.Handle {
-        try _check(stream: configuration.stdin)
-        try _check(stream: configuration.stdout)
-        try _check(stream: configuration.stderr)
+        try _checkSpawnSupports(configuration)
 
         let argv = [configuration.executable] + configuration.arguments
         let envp = _flattenEnvironment(configuration.environment)
@@ -78,27 +86,69 @@ extension Process.Spawn {
         return Process.Handle(processID: pid)
     }
 
-    /// Spawns a child and blocks until it terminates, returning
-    /// the resulting status.
+    /// Spawns a child, drains any captured pipes, waits for the
+    /// child to terminate, and returns the bundled result.
+    ///
+    /// For ``Process/Stream/pipe`` streams, the child's slot is
+    /// redirected to one end of an anonymous pipe pair; the parent
+    /// drains the other end into the corresponding field of
+    /// ``Process/Output`` (`stdout` and / or `stderr`). For
+    /// ``Process/Stream/inherit`` streams, the corresponding field
+    /// is `nil`.
+    ///
+    /// If
+    /// ``Process/Spawn/Configuration/workingDirectory`` is non-`nil`,
+    /// the child changes to that directory via
+    /// `posix_spawn_file_actions_addchdir(3)` before `execve(2)`.
     ///
     /// - Parameter configuration: spawn parameters.
-    /// - Returns: the child's final ``Process/Status``.
-    /// - Throws: ``Process/Error`` on spawn or wait failure.
+    /// - Returns: ``Process/Output`` with the child's status and any
+    ///   captured stream bytes.
+    /// - Throws: ``Process/Error`` on spawn / wait / capture failure.
+    ///
+    /// ## Drain ordering and pipe-buffer limitations
+    ///
+    /// `run` drains captured pipes serially in the order `stdout`,
+    /// then `stderr`. This is sound when the child's output to either
+    /// stream stays within the kernel's pipe buffer (typically 64 KiB
+    /// on Darwin and Linux). A child that writes more than that to
+    /// stderr while the parent is still draining stdout will block on
+    /// the stderr write — which in turn prevents stdout from
+    /// completing. For workloads that exceed the pipe buffer on
+    /// stderr, redirect stderr to a file (out-of-scope for v2;
+    /// reserved for v3) or capture only one stream at a time.
     public static func run(
         _ configuration: Configuration
-    ) throws(Process.Error) -> Process.Status {
-        let handle = try spawn(configuration)
-        return try handle.wait()
+    ) throws(Process.Error) -> Process.Output {
+        // Fast path: no pipes, no cwd — reuse the simple spawn + wait.
+        if configuration.stdin == .inherit
+            && configuration.stdout == .inherit
+            && configuration.stderr == .inherit
+            && configuration.workingDirectory == nil
+        {
+            let handle = try spawn(configuration)
+            let status = try handle.wait()
+            return Process.Output(status: status)
+        }
+
+        return try _runWithCapture(configuration)
     }
 }
 
 // MARK: - Internal helpers
 
 extension Process.Spawn {
+    /// Validates that `configuration` uses only the subset supported
+    /// by the bare ``spawn(_:)`` entry point.
     @usableFromInline
-    internal static func _check(stream: Process.Stream) throws(Process.Error) {
-        switch stream {
-        case .inherit: return
+    internal static func _checkSpawnSupports(
+        _ configuration: Configuration
+    ) throws(Process.Error) {
+        switch configuration.stdin { case .inherit: break; case .pipe: throw .streamPolicyUnsupported }
+        switch configuration.stdout { case .inherit: break; case .pipe: throw .streamPolicyUnsupported }
+        switch configuration.stderr { case .inherit: break; case .pipe: throw .streamPolicyUnsupported }
+        if configuration.workingDirectory != nil {
+            throw .streamPolicyUnsupported
         }
     }
 

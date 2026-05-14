@@ -13,35 +13,47 @@ extension Process {
     /// Disposition of a child process's standard stream
     /// (`stdin`, `stdout`, `stderr`).
     ///
-    /// ## v1 Coverage
+    /// ## v2 Coverage
     ///
-    /// v1 ships ``inherit`` only — the default behavior of
-    /// ``ISO_9945/Kernel/Process/Spawn/spawn(path:argv:envp:)``
-    /// (passing `nil` for `posix_spawn_file_actions_t`).
+    /// v2 ships ``inherit`` and ``pipe``. The pipe case routes the
+    /// stream through an anonymous pipe pair: the child sees one end,
+    /// the parent reads/writes the other.
     ///
-    /// Reserved for v2 (gated on adding
-    /// `posix_spawn_file_actions_addclose` /
-    /// `posix_spawn_file_actions_addopen` /
-    /// `posix_spawn_file_actions_adddup2` to ``swift-iso-9945``):
+    /// The slot determines who-gets-which-end:
     ///
-    ///   - `discard`: redirect to `/dev/null` (`addopen` to
-    ///     `/dev/null`).
-    ///   - `file(Path)`: redirect to a file (`addopen` with caller-
-    ///     supplied path + flags).
-    ///   - `pipe(Kernel.Pipe.Descriptors.Side)`: redirect to one
-    ///     end of an anonymous pipe (`adddup2`).
+    /// | Slot   | Child gets       | Parent gets       |
+    /// |--------|------------------|-------------------|
+    /// | stdin  | read end         | write end         |
+    /// | stdout | write end        | read end          |
+    /// | stderr | write end        | read end          |
     ///
-    /// Authoring guidance: stream values appear in
-    /// ``Process/Spawn/Configuration``'s `stdin` / `stdout` /
-    /// `stderr` slots; cross-references in those positions document
-    /// the scope of the v1 behavior so it is clear what callers can
-    /// expect.
+    /// When stdout or stderr is ``pipe``, ``Process/Spawn/run(_:)``
+    /// drains the parent-side read end synchronously and surfaces the
+    /// captured bytes via ``Process/Output``.
+    ///
+    /// ## Reserved for v3
+    ///
+    /// Further redirection forms (gated on additional
+    /// `posix_spawn_file_actions_*` adoption in ``swift-iso-9945``):
+    ///
+    ///   - `discard`: redirect to `/dev/null`.
+    ///   - `file(Path)`: redirect to a caller-supplied file.
     public enum Stream: Sendable, Equatable {
         /// Child inherits the parent's open file descriptor.
         ///
-        /// Implemented via `posix_spawn` with `nil` file_actions,
-        /// which preserves the parent's stream as the child's same
-        /// stream (POSIX `posix_spawn(3)` default).
+        /// Implemented via `posix_spawn` without file actions, which
+        /// preserves the parent's stream as the child's same stream
+        /// (POSIX `posix_spawn(3)` default).
         case inherit
+
+        /// Child's stream is connected to one end of an anonymous pipe;
+        /// the parent owns the other end.
+        ///
+        /// See the per-slot table on ``Stream`` for which side the
+        /// child and parent each see. Captured output from
+        /// `pipe`-routed stdout / stderr is surfaced via
+        /// ``Process/Output`` when the call goes through
+        /// ``Process/Spawn/run(_:)``.
+        case pipe
     }
 }

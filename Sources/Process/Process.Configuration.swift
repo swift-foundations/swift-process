@@ -10,8 +10,8 @@
 // ===----------------------------------------------------------------------===//
 
 extension Process.Spawn {
-    /// Spawn parameters: executable, arguments, environment, and
-    /// per-stream disposition.
+    /// Spawn parameters: executable, arguments, environment,
+    /// per-stream disposition, and working directory.
     ///
     /// ## Argument & environment encoding
     ///
@@ -27,17 +27,15 @@ extension Process.Spawn {
     /// - non-`nil`: replace the parent's environment with the
     ///   given dictionary.
     ///
-    /// Mixing inheritance with overrides is out of scope for v1;
-    /// callers compose `nil` (inherit) or supply a complete
-    /// snapshot.
+    /// Mixing inheritance with overrides is out of scope; callers
+    /// compose `nil` (inherit) or supply a complete snapshot.
     ///
     /// ## Working directory
     ///
-    /// v1 inherits the parent's current working directory.
-    /// `posix_spawn`'s `posix_spawn_file_actions_addchdir_np` is
-    /// available on modern Darwin / glibc but is not yet wrapped
-    /// in ``swift-iso-9945``; the `workingDirectory` field is
-    /// reserved for v2.
+    /// `workingDirectory` defaults to `nil`, which inherits the
+    /// parent's current working directory. A non-`nil` value
+    /// invokes `posix_spawn_file_actions_addchdir(3)` so the child
+    /// is positioned in that directory before `execve(2)`.
     public struct Configuration: Sendable {
         /// Path to the executable.
         public let executable: Swift.String
@@ -61,13 +59,20 @@ extension Process.Spawn {
         /// Disposition of the child's standard error.
         public let stderr: Process.Stream
 
+        /// Working directory the child changes to before `execve(2)`.
+        ///
+        /// `nil` (default) inherits the parent's cwd. A non-`nil`
+        /// value is applied via `posix_spawn_file_actions_addchdir(3)`.
+        public let workingDirectory: Swift.String?
+
         public init(
             executable: Swift.String,
             arguments: [Swift.String] = [],
             environment: [Swift.String: Swift.String]? = nil,
             stdin: Process.Stream = .inherit,
             stdout: Process.Stream = .inherit,
-            stderr: Process.Stream = .inherit
+            stderr: Process.Stream = .inherit,
+            workingDirectory: Swift.String? = nil
         ) {
             self.executable = executable
             self.arguments = arguments
@@ -75,6 +80,7 @@ extension Process.Spawn {
             self.stdin = stdin
             self.stdout = stdout
             self.stderr = stderr
+            self.workingDirectory = workingDirectory
         }
     }
 }
