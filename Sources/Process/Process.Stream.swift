@@ -13,9 +13,9 @@ extension Process {
     /// Disposition of a child process's standard stream
     /// (`stdin`, `stdout`, `stderr`).
     ///
-    /// ## v2 Coverage
+    /// ## Coverage
     ///
-    /// v2 ships ``inherit`` and ``pipe``. The pipe case routes the
+    /// Ships ``inherit`` and ``pipe``. The pipe case routes the
     /// stream through an anonymous pipe pair: the child sees one end,
     /// the parent reads/writes the other.
     ///
@@ -28,15 +28,30 @@ extension Process {
     /// | stderr | write end        | read end          |
     ///
     /// When stdout or stderr is ``pipe``, ``Process/Spawn/run(_:)``
-    /// drains the parent-side read end synchronously and surfaces the
-    /// captured bytes via ``Process/Output``.
+    /// drains the parent-side read end and surfaces the captured
+    /// bytes via ``Process/Output``. On POSIX, the both-pipes case
+    /// (v3) drains stdout and stderr concurrently via `poll(2)` so
+    /// neither pipe can wedge the other; single-pipe configurations
+    /// retain the simpler sequential drain.
     ///
-    /// ## Reserved for v3
+    /// ## Platform Mechanics
     ///
-    /// Further redirection forms (gated on additional
-    /// `posix_spawn_file_actions_*` adoption in ``swift-iso-9945``):
+    /// | Platform | Slot underlying type   | Inheritance discipline |
+    /// |----------|------------------------|------------------------|
+    /// | POSIX    | `int` file descriptor  | `posix_spawn_file_actions_t` (`dup2` / `close`) |
+    /// | Windows  | `HANDLE` (UInt pointer)| `STARTUPINFOEX.hStd{Input,Output,Error}` + `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` |
     ///
-    ///   - `discard`: redirect to `/dev/null`.
+    /// Both routes converge on the public ``Process/Output`` shape;
+    /// the typed `~Copyable` wrappers (``ISO_9945/Kernel/Descriptor``
+    /// on POSIX, ``Windows/32/Kernel/Descriptor`` on Windows) keep
+    /// the raw representations hidden from consumer code.
+    ///
+    /// ## Reserved for v4
+    ///
+    /// Further redirection forms (v3 was concurrent drain + timeout;
+    /// stream-shape additions move to v4):
+    ///
+    ///   - `discard`: redirect to `/dev/null` (POSIX) / `NUL` (Windows).
     ///   - `file(Path)`: redirect to a caller-supplied file.
     public enum Stream: Sendable, Equatable {
         /// Child inherits the parent's open file descriptor.
