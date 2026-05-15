@@ -9,22 +9,22 @@
 //
 // ===----------------------------------------------------------------------===//
 
-#if !os(Windows)
+#if os(Windows)
 
 import Testing
 @testable import Process
 
-@Suite("Process pipe capture + workingDirectory")
-struct ProcessSpawnCaptureTests {
+@Suite("Process pipe capture + workingDirectory (Windows)")
+struct ProcessSpawnCaptureWindowsTests {
 
     // MARK: - stdout capture
 
-    @Test("echo hello → captured stdout is 'hello\\n'")
+    @Test("cmd.exe /C 'echo hello' → captured stdout is 'hello\\r\\n'")
     func captureEchoStdout() throws {
         let output = try Process.Spawn.run(
             Process.Spawn.Configuration(
-                executable: "/bin/echo",
-                arguments: ["hello"],
+                executable: "C:\\Windows\\System32\\cmd.exe",
+                arguments: ["/C", "echo hello"],
                 stdout: .pipe
             )
         )
@@ -33,17 +33,17 @@ struct ProcessSpawnCaptureTests {
 
         let bytes = try #require(output.stdout)
         let text = Swift.String(decoding: bytes, as: UTF8.self)
-        #expect(text == "hello\n")
+        #expect(text == "hello\r\n")
     }
 
     // MARK: - stderr capture
 
-    @Test("sh -c 'echo err >&2' → captured stderr is 'err\\n'")
-    func captureStderrFromSubshell() throws {
+    @Test("cmd.exe /C 'echo err 1>&2' → captured stderr is 'err\\r\\n'")
+    func captureStderrFromCmd() throws {
         let output = try Process.Spawn.run(
             Process.Spawn.Configuration(
-                executable: "/bin/sh",
-                arguments: ["-c", "echo err 1>&2"],
+                executable: "C:\\Windows\\System32\\cmd.exe",
+                arguments: ["/C", "echo err 1>&2"],
                 stderr: .pipe
             )
         )
@@ -52,47 +52,54 @@ struct ProcessSpawnCaptureTests {
 
         let bytes = try #require(output.stderr)
         let text = Swift.String(decoding: bytes, as: UTF8.self)
-        #expect(text == "err\n")
+        #expect(text == "err\r\n")
     }
 
     // MARK: - both captures
 
-    @Test("sh -c '… stdout … stderr …' → both captured")
+    @Test("powershell.exe Write-Output 'out' + Write-Error 'err' → both captured")
     func captureBothStreams() throws {
         let output = try Process.Spawn.run(
             Process.Spawn.Configuration(
-                executable: "/bin/sh",
-                arguments: ["-c", "echo out; echo err 1>&2"],
+                executable: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                arguments: [
+                    "-NoProfile",
+                    "-Command",
+                    "Write-Output 'out'; Write-Error 'err'"
+                ],
                 stdout: .pipe,
                 stderr: .pipe
             )
         )
-        #expect(output.status == .exited(code: 0))
-
+        // PowerShell Write-Error sets exit to non-zero by default; we just
+        // verify both streams were captured.
         let outBytes = try #require(output.stdout)
         let errBytes = try #require(output.stderr)
-        #expect(Swift.String(decoding: outBytes, as: UTF8.self) == "out\n")
-        #expect(Swift.String(decoding: errBytes, as: UTF8.self) == "err\n")
+        let outText = Swift.String(decoding: outBytes, as: UTF8.self)
+        let errText = Swift.String(decoding: errBytes, as: UTF8.self)
+        #expect(outText.contains("out"))
+        #expect(errText.contains("err"))
     }
 
     // MARK: - workingDirectory
 
-    @Test("pwd with workingDirectory: '/tmp' → child cwd is /tmp")
-    func workingDirectoryPwd() throws {
+    @Test("cmd.exe /C 'echo %CD%' with workingDirectory: 'C:\\Windows' → cwd is C:\\Windows")
+    func workingDirectoryCD() throws {
         let output = try Process.Spawn.run(
             Process.Spawn.Configuration(
-                executable: "/bin/pwd",
+                executable: "C:\\Windows\\System32\\cmd.exe",
+                arguments: ["/C", "echo %CD%"],
                 stdout: .pipe,
-                workingDirectory: "/tmp"
+                workingDirectory: "C:\\Windows"
             )
         )
         #expect(output.status == .exited(code: 0))
 
         let bytes = try #require(output.stdout)
         let text = Swift.String(decoding: bytes, as: UTF8.self)
-            .trimmingTrailingNewlines
-        // macOS resolves /tmp to /private/tmp; both forms are accepted.
-        #expect(text == "/tmp" || text == "/private/tmp", "got: \(text)")
+            .trimmingTrailingNewlinesWin
+        // CD output ends with \r\n on Windows; trim and case-insensitive match.
+        #expect(text.lowercased() == "c:\\windows", "got: \(text)")
     }
 
     // MARK: - error paths
@@ -102,7 +109,8 @@ struct ProcessSpawnCaptureTests {
         do throws(Process.Error) {
             _ = try Process.Spawn.run(
                 Process.Spawn.Configuration(
-                    executable: "/usr/bin/cat",
+                    executable: "C:\\Windows\\System32\\cmd.exe",
+                    arguments: ["/C", "type CON"],
                     stdin: .pipe,
                     stdout: .pipe
                 )
@@ -118,7 +126,8 @@ struct ProcessSpawnCaptureTests {
         do throws(Process.Error) {
             _ = try Process.Spawn.spawn(
                 Process.Spawn.Configuration(
-                    executable: "/usr/bin/true",
+                    executable: "C:\\Windows\\System32\\cmd.exe",
+                    arguments: ["/C", "exit 0"],
                     stdout: .pipe
                 )
             )
@@ -133,8 +142,9 @@ struct ProcessSpawnCaptureTests {
         do throws(Process.Error) {
             _ = try Process.Spawn.spawn(
                 Process.Spawn.Configuration(
-                    executable: "/usr/bin/true",
-                    workingDirectory: "/tmp"
+                    executable: "C:\\Windows\\System32\\cmd.exe",
+                    arguments: ["/C", "exit 0"],
+                    workingDirectory: "C:\\Windows"
                 )
             )
             Issue.record("expected throw")
@@ -147,7 +157,7 @@ struct ProcessSpawnCaptureTests {
 // MARK: - String trimming helper
 
 extension Swift.String {
-    fileprivate var trimmingTrailingNewlines: Swift.String {
+    fileprivate var trimmingTrailingNewlinesWin: Swift.String {
         var s = self
         while s.last == "\n" || s.last == "\r" {
             s.removeLast()
@@ -156,4 +166,4 @@ extension Swift.String {
     }
 }
 
-#endif // !os(Windows)
+#endif // os(Windows)
