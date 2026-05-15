@@ -29,6 +29,7 @@ let package = Package(
         .package(path: "../../swift-primitives/swift-path-primitives"),
         .package(path: "../swift-kernel"),
         .package(path: "../swift-posix"),
+        .package(path: "../swift-windows"),
         .package(path: "../swift-strings")
     ],
     targets: [
@@ -37,7 +38,21 @@ let package = Package(
             dependencies: [
                 .product(name: "Kernel", package: "swift-kernel"),
                 .product(name: "Path Primitives", package: "swift-path-primitives"),
-                .product(name: "POSIX Kernel", package: "swift-posix"),
+                .product(
+                    name: "POSIX Kernel",
+                    package: "swift-posix",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
+                .product(
+                    name: "Windows Kernel Process",
+                    package: "swift-windows",
+                    condition: .when(platforms: [.windows])
+                ),
+                .product(
+                    name: "Windows Kernel File",
+                    package: "swift-windows",
+                    condition: .when(platforms: [.windows])
+                ),
                 .product(name: "Strings", package: "swift-strings")
             ],
             path: "Sources/Process"

@@ -9,8 +9,11 @@
 //
 // ===----------------------------------------------------------------------===//
 
+#if !os(Windows)
 internal import Path_Primitives
 internal import POSIX_Kernel
+#endif
+
 internal import Strings
 
 extension Process {
@@ -28,12 +31,20 @@ extension Process {
     ///   surface (``Process/Stream/pipe`` streams,
     ///   ``Process/Spawn/Configuration/workingDirectory``).
     ///
-    /// Both go through ``POSIX/Kernel/Process/Spawn`` (which is a
-    /// thin pass-through over ``ISO_9945/Kernel/Process/Spawn``'s
-    /// `posix_spawn(3)` typed wrapper). `posix_spawn` does not
-    /// duplicate the parent's address space and is safe to call
-    /// from multithreaded Swift processes (including those running
-    /// Swift Testing).
+    /// ## Platforms
+    ///
+    /// - **POSIX (macOS / iOS / tvOS / watchOS / visionOS / Linux):**
+    ///   both entry points go through ``POSIX/Kernel/Process/Spawn``
+    ///   (a thin pass-through over ``ISO_9945/Kernel/Process/Spawn``'s
+    ///   `posix_spawn(3)` typed wrapper). `posix_spawn` does not
+    ///   duplicate the parent's address space and is safe to call
+    ///   from multithreaded Swift processes (including those running
+    ///   Swift Testing).
+    /// - **Windows:** both entry points go through
+    ///   ``Windows/32/Kernel/Process/Spawn``, which wraps
+    ///   `CreateProcessW` with `STARTUPINFOEX` and
+    ///   `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` for precise child-handle
+    ///   inheritance discipline.
     public enum Spawn: Sendable {}
 }
 
@@ -52,12 +63,13 @@ extension Process.Spawn {
     /// - Parameter configuration: spawn parameters.
     /// - Returns: a handle to the spawned child.
     /// - Throws: ``Process/Error`` on configuration validation
-    ///   failure or `posix_spawn(3)` failure.
+    ///   failure or platform spawn failure.
     public static func spawn(
         _ configuration: Configuration
     ) throws(Process.Error) -> Process.Handle {
         try _checkSpawnSupports(configuration)
 
+        #if !os(Windows)
         let argv = [configuration.executable] + configuration.arguments
         let envp = _flattenEnvironment(configuration.environment)
 
@@ -84,6 +96,24 @@ extension Process.Spawn {
         }
 
         return Process.Handle(processID: pid)
+        #else
+        // Windows-side simple spawn: build an empty Actions list (no stdio
+        // redirection, no working directory) and delegate to the Capture
+        // file's _spawnWithActions helper.
+        let actions: Windows.`32`.Kernel.Process.Spawn.Actions
+        do throws(Windows.`32`.Kernel.Process.Error) {
+            actions = try Windows.`32`.Kernel.Process.Spawn.Actions()
+        } catch {
+            switch error {
+            case .create(let code), .wait(let code):
+                throw .spawn(.create(code))
+            case .platform(let err):
+                throw .spawn(.create(err.code))
+            }
+        }
+        let result = try _spawnWithActions(configuration, actions: actions)
+        return Process.Handle(processInfo: consume result)
+        #endif
     }
 
     /// Spawns a child, drains any captured pipes, waits for the
@@ -98,8 +128,9 @@ extension Process.Spawn {
     ///
     /// If
     /// ``Process/Spawn/Configuration/workingDirectory`` is non-`nil`,
-    /// the child changes to that directory via
-    /// `posix_spawn_file_actions_addchdir(3)` before `execve(2)`.
+    /// the child changes to that directory before `execve(2)`
+    /// (POSIX) or via the `lpCurrentDirectory` parameter
+    /// (Windows / `CreateProcessW`).
     ///
     /// - Parameter configuration: spawn parameters.
     /// - Returns: ``Process/Output`` with the child's status and any
@@ -111,12 +142,14 @@ extension Process.Spawn {
     /// `run` drains captured pipes serially in the order `stdout`,
     /// then `stderr`. This is sound when the child's output to either
     /// stream stays within the kernel's pipe buffer (typically 64 KiB
-    /// on Darwin and Linux). A child that writes more than that to
-    /// stderr while the parent is still draining stdout will block on
-    /// the stderr write — which in turn prevents stdout from
-    /// completing. For workloads that exceed the pipe buffer on
-    /// stderr, redirect stderr to a file (out-of-scope for v2;
-    /// reserved for v3) or capture only one stream at a time.
+    /// on Darwin and Linux; about 4 KiB on Windows for an anonymous
+    /// pipe created via `CreatePipe(_, _, _, 0)`). A child that
+    /// writes more than that to stderr while the parent is still
+    /// draining stdout will block on the stderr write — which in
+    /// turn prevents stdout from completing. For workloads that
+    /// exceed the pipe buffer on stderr, redirect stderr to a file
+    /// (out-of-scope for v2; reserved for v3) or capture only one
+    /// stream at a time.
     public static func run(
         _ configuration: Configuration
     ) throws(Process.Error) -> Process.Output {

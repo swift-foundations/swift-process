@@ -9,6 +9,8 @@
 //
 // ===----------------------------------------------------------------------===//
 
+#if !os(Windows)
+
 internal import Path_Primitives
 internal import POSIX_Kernel
 internal import POSIX_Kernel_File
@@ -296,3 +298,5 @@ extension Process.Spawn {
         return buffer
     }
 }
+
+#endif // !os(Windows)
