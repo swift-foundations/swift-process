@@ -130,7 +130,8 @@ extension Process.Spawn {
         // pipe-buffer limitation — note that Windows anonymous pipes default
         // to ~4 KiB per CreatePipe nSize=0, which is much smaller than POSIX's
         // typical 64 KiB. The drain-deadlock risk is therefore higher on
-        // Windows; v3 concurrent-drain is more urgent there.
+        // Windows; concurrent drain on the Windows path is reserved for a
+        // future revision (v3 landed concurrent drain on POSIX only).
         let capturedStdout = try _drainBytes(stdoutRead)
         let capturedStderr = try _drainBytes(stderrRead)
 

@@ -49,7 +49,8 @@ extension Process {
         /// sets ``Spawn/Configuration/workingDirectory`` (which go
         /// through ``Spawn/run(_:)``), and by ``Spawn/run(_:)``
         /// when ``Stream/pipe`` is requested for ``stdin``
-        /// (reserved for v3).
+        /// (reserved for a future revision; v3 added concurrent
+        /// stdout/stderr drain + timeout but not stdin pipe).
         case streamPolicyUnsupported
 
         /// The platform does not support subprocess spawning.
