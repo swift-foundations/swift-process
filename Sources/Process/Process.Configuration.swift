@@ -55,6 +55,18 @@ extension Process.Spawn {
     ///   via the `lpCurrentDirectory` parameter — no Actions step is
     ///   needed; the kernel applies it before the child's first
     ///   instruction.
+    ///
+    /// ## Timeout (POSIX, v3)
+    ///
+    /// `timeout` defaults to `nil`, which lets the child run until
+    /// it terminates on its own. A non-`nil` ``Swift/Duration`` bounds
+    /// the wait on POSIX: when the deadline elapses, the child is sent
+    /// `SIGKILL` and the result reports
+    /// ``Process/Status/signaled(signal:)``. Captured stdout / stderr
+    /// reflect whatever bytes were drained before the kill.
+    ///
+    /// On Windows the field is currently a no-op; deadline enforcement
+    /// on the Windows path is reserved for a future revision.
     public struct Configuration: Sendable {
         /// Path to the executable.
         public let executable: Swift.String
@@ -94,6 +106,26 @@ extension Process.Spawn {
         /// - Windows: `CreateProcessW.lpCurrentDirectory`.
         public let workingDirectory: Swift.String?
 
+        /// Maximum wall-clock duration the child is allowed to run.
+        ///
+        /// `nil` (default) waits indefinitely. A non-`nil` value bounds
+        /// the wait on POSIX: on expiry, the child is sent `SIGKILL`
+        /// and the result reports
+        /// ``Process/Status/signaled(signal:)`` with the platform
+        /// `SIGKILL` value. Any captured stream bytes drained before
+        /// the kill are preserved in
+        /// ``Process/Output/stdout`` / ``Process/Output/stderr``.
+        ///
+        /// Honored only on the ``Process/Spawn/run(_:)`` entry point.
+        /// The bare ``Process/Spawn/spawn(_:)`` returns the handle
+        /// without enforcing a timeout — the caller controls the wait
+        /// directly.
+        ///
+        /// On Windows this field is currently a no-op; deadline
+        /// enforcement on the Windows path is reserved for a future
+        /// revision.
+        public let timeout: Duration?
+
         public init(
             executable: Swift.String,
             arguments: [Swift.String] = [],
@@ -101,7 +133,8 @@ extension Process.Spawn {
             stdin: Process.Stream = .inherit,
             stdout: Process.Stream = .inherit,
             stderr: Process.Stream = .inherit,
-            workingDirectory: Swift.String? = nil
+            workingDirectory: Swift.String? = nil,
+            timeout: Duration? = nil
         ) {
             self.executable = executable
             self.arguments = arguments
@@ -110,6 +143,7 @@ extension Process.Spawn {
             self.stdout = stdout
             self.stderr = stderr
             self.workingDirectory = workingDirectory
+            self.timeout = timeout
         }
     }
 }

@@ -137,27 +137,55 @@ extension Process.Spawn {
     ///   captured stream bytes.
     /// - Throws: ``Process/Error`` on spawn / wait / capture failure.
     ///
-    /// ## Drain ordering and pipe-buffer limitations
+    /// ## Concurrent drain (POSIX, v3)
     ///
-    /// `run` drains captured pipes serially in the order `stdout`,
-    /// then `stderr`. This is sound when the child's output to either
-    /// stream stays within the kernel's pipe buffer (typically 64 KiB
-    /// on Darwin and Linux; about 4 KiB on Windows for an anonymous
-    /// pipe created via `CreatePipe(_, _, _, 0)`). A child that
-    /// writes more than that to stderr while the parent is still
-    /// draining stdout will block on the stderr write — which in
-    /// turn prevents stdout from completing. For workloads that
-    /// exceed the pipe buffer on stderr, redirect stderr to a file
-    /// (out-of-scope for v2; reserved for v3) or capture only one
-    /// stream at a time.
+    /// On POSIX, when both `stdout` and `stderr` are configured as
+    /// pipes, `run` drains them concurrently via `poll(2)` so neither
+    /// pipe can wedge the other. Children that emit more than the
+    /// kernel's pipe buffer (typically 64 KiB on Darwin and Linux) to
+    /// stderr while the parent is still reading stdout therefore
+    /// complete without deadlock — the empirical trigger for promoting
+    /// drain to concurrent in v3.
+    ///
+    /// Single-pipe configurations (only stdout or only stderr) retain
+    /// the simpler sequential drain — single-pipe ordering cannot
+    /// deadlock, so the simpler code path is preserved.
+    ///
+    /// On Windows, `run` still drains pipes sequentially (about 4 KiB
+    /// per anonymous pipe via `CreatePipe(_, _, _, 0)`); concurrent
+    /// drain on the Windows path is reserved for a future revision.
+    /// For high-volume Windows captures, redirect stderr to a file or
+    /// capture only one stream at a time.
+    ///
+    /// ## Timeout (POSIX, v3)
+    ///
+    /// On POSIX, if
+    /// ``Process/Spawn/Configuration/timeout`` is non-`nil`, a
+    /// background watchdog thread sends `SIGKILL` to the child when
+    /// the deadline elapses. The child is reaped via the normal
+    /// `wait(2)` path; the result reports
+    /// ``Process/Status/signaled(signal:)`` with the platform's
+    /// `SIGKILL` value (typically `9`). Captured stream bytes drained
+    /// before the kill are preserved in
+    /// ``Process/Output/stdout`` / ``Process/Output/stderr``. Callers
+    /// wishing to distinguish "child timed out" from "child crashed"
+    /// can match on the signal value.
+    ///
+    /// On Windows the `timeout` field is currently a no-op; deadline
+    /// enforcement on the Windows path is reserved for a future
+    /// revision.
     public static func run(
         _ configuration: Configuration
     ) throws(Process.Error) -> Process.Output {
-        // Fast path: no pipes, no cwd — reuse the simple spawn + wait.
+        // Fast path: no pipes, no cwd, no timeout — reuse the simple
+        // spawn + wait. Timeout pulls into the slow path because the
+        // POSIX watchdog needs the slow-path's PID-keyed wait
+        // bookkeeping.
         if configuration.stdin == .inherit
             && configuration.stdout == .inherit
             && configuration.stderr == .inherit
             && configuration.workingDirectory == nil
+            && configuration.timeout == nil
         {
             let handle = try spawn(configuration)
             let status = try handle.wait()

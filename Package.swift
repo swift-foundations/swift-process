@@ -30,7 +30,8 @@ let package = Package(
         .package(path: "../swift-kernel"),
         .package(path: "../swift-posix"),
         .package(path: "../swift-windows"),
-        .package(path: "../swift-strings")
+        .package(path: "../swift-strings"),
+        .package(path: "../../swift-iso/swift-iso-9945")
     ],
     targets: [
         .target(
@@ -41,6 +42,14 @@ let package = Package(
                 .product(
                     name: "POSIX Kernel",
                     package: "swift-posix",
+                    condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
+                ),
+                // Direct (POSIX-only) for the @_spi(Syscall) Poll.Entry.descriptor
+                // accessor used by the v3 concurrent drain to mask out
+                // closed slots via pollfd.fd = -1.
+                .product(
+                    name: "ISO 9945 Kernel Poll",
+                    package: "swift-iso-9945",
                     condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
                 ),
                 .product(
