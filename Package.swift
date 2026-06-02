@@ -26,12 +26,12 @@ let package = Package(
         .library(name: "Process", targets: ["Process"])
     ],
     dependencies: [
-        .package(path: "../../swift-primitives/swift-path-primitives"),
-        .package(path: "../swift-kernel"),
-        .package(path: "../swift-posix"),
-        .package(path: "../swift-windows"),
-        .package(path: "../swift-strings"),
-        .package(path: "../../swift-iso/swift-iso-9945")
+        .package(url: "https://github.com/swift-primitives/swift-path-primitives.git", branch: "main"),
+        .package(url: "https://github.com/swift-foundations/swift-kernel.git", branch: "main"),
+        .package(url: "https://github.com/swift-foundations/swift-posix.git", branch: "main"),
+        .package(url: "https://github.com/swift-foundations/swift-windows.git", branch: "main"),
+        .package(url: "https://github.com/swift-foundations/swift-strings.git", branch: "main"),
+        .package(url: "https://github.com/swift-iso/swift-iso-9945.git", branch: "main")
     ],
     targets: [
         .target(
