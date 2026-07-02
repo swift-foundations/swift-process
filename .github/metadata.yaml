@@ -1,6 +1,6 @@
 # .github/metadata.yaml
 # Triaged 2026-04-29 — anomaly-fix pass after wave-4 PR-branch triage didn't apply.
-description: "Process for Swift."
+description: "Cross-platform subprocess spawning with deadlock-free output capture and lifecycle management for Swift."
 topics:
   - foundations
   - process
