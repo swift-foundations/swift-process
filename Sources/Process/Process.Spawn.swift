@@ -9,12 +9,12 @@
 //
 // ===----------------------------------------------------------------------===//
 
-#if !os(Windows)
-internal import Path_Primitives
-internal import POSIX_Kernel
-#endif
-
 internal import Strings
+
+#if !os(Windows)
+    internal import Path_Primitives
+    internal import POSIX_Kernel
+#endif
 
 extension Process {
     /// Subprocess spawn operations.
@@ -70,49 +70,51 @@ extension Process.Spawn {
         try _checkSpawnSupports(configuration)
 
         #if !os(Windows)
-        let argv = [configuration.executable] + configuration.arguments
-        let envp = _flattenEnvironment(configuration.environment)
+            let argv = [configuration.executable] + configuration.arguments
+            let envp = _flattenEnvironment(configuration.environment)
 
-        let pid: ISO_9945.Kernel.Process.ID
-        do throws(Path.String.Error<ISO_9945.Kernel.Process.Error>) {
-            pid = try unsafe Path.scope.array(argv, envp) {
-                (
-                    argvPtr: UnsafePointer<UnsafePointer<Path.Char>?>,
-                    envpPtr: UnsafePointer<UnsafePointer<Path.Char>?>
-                ) throws(ISO_9945.Kernel.Process.Error) -> ISO_9945.Kernel.Process.ID in
-                try unsafe POSIX.Kernel.Process.Spawn.spawn(
-                    path: unsafe argvPtr[0]!,
-                    argv: argvPtr,
-                    envp: envpPtr
-                )
-            }
-        } catch {
-            switch error {
-            case .conversion(.interiorNUL(let index)):
-                throw .invalidPath(index: index)
-            case .body(let posixError):
-                throw .spawn(posixError)
-            }
-        }
+            let pid: ISO_9945.Kernel.Process.ID
+            do throws(Path.String.Error<ISO_9945.Kernel.Process.Error>) {
+                pid = try unsafe Path.scope.array(argv, envp) {
+                    (
+                        argvPtr: UnsafePointer<UnsafePointer<Path.Char>?>,
+                        envpPtr: UnsafePointer<UnsafePointer<Path.Char>?>
+                    ) throws(ISO_9945.Kernel.Process.Error) -> ISO_9945.Kernel.Process.ID in
+                    try unsafe POSIX.Kernel.Process.Spawn.spawn(
+                        path: unsafe argvPtr[0]!,
+                        argv: argvPtr,
+                        envp: envpPtr
+                    )
+                }
+            } catch {
+                switch error {
+                case .conversion(.interiorNUL(let index)):
+                    throw .invalidPath(index: index)
 
-        return Process.Handle(processID: pid)
+                case .body(let posixError):
+                    throw .spawn(posixError)
+                }
+            }
+
+            return Process.Handle(processID: pid)
         #else
-        // Windows-side simple spawn: build an empty Actions list (no stdio
-        // redirection, no working directory) and delegate to the Capture
-        // file's _spawnWithActions helper.
-        let actions: Windows.`32`.Kernel.Process.Spawn.Actions
-        do throws(Windows.`32`.Kernel.Process.Error) {
-            actions = try Windows.`32`.Kernel.Process.Spawn.Actions()
-        } catch {
-            switch error {
-            case .create(let code), .wait(let code):
-                throw .spawn(.create(code))
-            case .platform(let err):
-                throw .spawn(.create(err.code))
+            // Windows-side simple spawn: build an empty Actions list (no stdio
+            // redirection, no working directory) and delegate to the Capture
+            // file's _spawnWithActions helper.
+            let actions: Windows.`32`.Kernel.Process.Spawn.Actions
+            do throws(Windows.`32`.Kernel.Process.Error) {
+                actions = try Windows.`32`.Kernel.Process.Spawn.Actions()
+            } catch {
+                switch error {
+                case .create(let code), .wait(let code):
+                    throw .spawn(.create(code))
+
+                case .platform(let err):
+                    throw .spawn(.create(err.code))
+                }
             }
-        }
-        let result = try _spawnWithActions(configuration, actions: actions)
-        return Process.Handle(processInfo: consume result)
+            let result = try _spawnWithActions(configuration, actions: actions)
+            return Process.Handle(processInfo: consume result)
         #endif
     }
 
@@ -205,9 +207,18 @@ extension Process.Spawn {
     internal static func _checkSpawnSupports(
         _ configuration: Configuration
     ) throws(Process.Error) {
-        switch configuration.stdin { case .inherit: break; case .pipe: throw .streamPolicyUnsupported }
-        switch configuration.stdout { case .inherit: break; case .pipe: throw .streamPolicyUnsupported }
-        switch configuration.stderr { case .inherit: break; case .pipe: throw .streamPolicyUnsupported }
+        switch configuration.stdin {
+        case .inherit: break
+        case .pipe: throw .streamPolicyUnsupported
+        }
+        switch configuration.stdout {
+        case .inherit: break
+        case .pipe: throw .streamPolicyUnsupported
+        }
+        switch configuration.stderr {
+        case .inherit: break
+        case .pipe: throw .streamPolicyUnsupported
+        }
         if configuration.workingDirectory != nil {
             throw .streamPolicyUnsupported
         }
@@ -237,16 +248,21 @@ extension Process.Spawn {
     internal static func _inheritedEnvironment() -> [Swift.String] {
         var result: [Swift.String] = []
         #if os(Windows)
-        guard var iterator = Kernel.Environment.entries() else {
-            return result
-        }
+            guard var iterator = Kernel.Environment.entries() else {
+                return result
+            }
         #else
-        var iterator = Kernel.Environment.entries()
+            var iterator = Kernel.Environment.entries()
         #endif
         while let entry = iterator.next() {
-            guard let name = try? Swift.String(entry.name),
-                  let value = try? Swift.String(entry.value)
-            else { continue }
+            let name: Swift.String
+            let value: Swift.String
+            do {
+                name = try Swift.String(entry.name)
+                value = try Swift.String(entry.value)
+            } catch {
+                continue
+            }
             result.append("\(name)=\(value)")
         }
         return result

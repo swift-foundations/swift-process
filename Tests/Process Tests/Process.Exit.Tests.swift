@@ -10,6 +10,7 @@
 // ===----------------------------------------------------------------------===//
 
 import Testing
+
 @testable import Process
 
 /// Structural compile-time tests for ``Process/exit(_:)``.
