@@ -257,7 +257,7 @@ extension Process.Spawn {
         while let entry = iterator.next() {
             let name: Swift.String
             let value: Swift.String
-            do {
+            do throws(UTF8.ValidationError) {
                 name = try Swift.String(entry.name)
                 value = try Swift.String(entry.value)
             } catch {
