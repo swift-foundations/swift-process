@@ -19,10 +19,11 @@
     ///
     /// `.timeLimit` per test catches a regression-induced hang well before
     /// the test runner's default infinite wait.
-    @Suite("Process v3: concurrent drain + timeout")
-    struct ProcessSpawnV3Tests {
+    extension Process.Spawn.Test {
+        @Suite("Process v3: concurrent drain + timeout")
+        struct V3 {
 
-        // MARK: - Concurrent drain (the >64-KiB regression)
+            // MARK: - Concurrent drain (the >64-KiB regression)
 
         /// The empirical trigger for promoting drain to concurrent in v3:
         /// the child writes 256 KiB to stderr while the parent is still
@@ -262,6 +263,7 @@
             #expect(configuration.timeout == nil)
             let output = try Process.Spawn.run(configuration)
             #expect(output.status == .exited(code: 0))
+        }
         }
     }
 

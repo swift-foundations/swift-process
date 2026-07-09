@@ -14,8 +14,9 @@
     import Testing
     @testable import Process
 
-    @Suite("Process spawn smoke tests (Windows)")
-    struct ProcessSpawnWindowsTests {
+    extension Process.Spawn.Test {
+        @Suite("Process spawn smoke tests (Windows)")
+        struct Windows {
         @Test
         func `Spawning cmd.exe /C 'exit 0' returns exit code 0`() throws {
             let output = try Process.Spawn.run(
@@ -69,6 +70,7 @@
                 default: Issue.record("unexpected error: \(error)")
                 }
             }
+        }
         }
     }
 

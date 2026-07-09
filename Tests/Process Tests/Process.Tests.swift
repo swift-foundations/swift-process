@@ -14,8 +14,15 @@
     import Testing
     @testable import Process
 
-    @Suite("Process spawn smoke tests")
-    struct ProcessSpawnTests {
+    // MARK: - Process spawn smoke tests
+    //
+    // Merged into ``Process/Spawn/Test`` per [SWIFT-TEST-002]: the tested
+    // type (`Process.Spawn`) already carries a `Test` suite (declared in
+    // Process.Spawn.Capture.Tests.swift) and this suite's name has no
+    // leftover distinguishing token once `ProcessSpawn` is stripped, so
+    // these tests are merged in as additional members of that suite via
+    // extension rather than a nested sub-suite.
+    extension Process.Spawn.Test {
         @Test
         func `Spawning /usr/bin/true returns exit code 0`() throws {
             let output = try Process.Spawn.run(

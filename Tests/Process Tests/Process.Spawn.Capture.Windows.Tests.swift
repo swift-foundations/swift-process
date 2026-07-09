@@ -14,10 +14,11 @@
     import Testing
     @testable import Process
 
-    @Suite("Process pipe capture + workingDirectory (Windows)")
-    struct ProcessSpawnCaptureWindowsTests {
+    extension Process.Spawn {
+        @Suite("Process pipe capture + workingDirectory (Windows)")
+        struct Test {
 
-        // MARK: - stdout capture
+            // MARK: - stdout capture
 
         @Test("cmd.exe /C 'echo hello' → captured stdout is 'hello\\r\\n'")
         func captureEchoStdout() throws {
@@ -151,6 +152,7 @@
             } catch {
                 #expect(error == .streamPolicyUnsupported)
             }
+        }
         }
     }
 

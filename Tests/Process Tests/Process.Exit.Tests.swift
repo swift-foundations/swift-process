@@ -20,15 +20,17 @@ import Testing
 /// exists, has the right type signature, and is reachable from the
 /// public API surface, by referencing the function as a typed
 /// `(Int32) -> Never` value without calling it.
-@Suite("Process.exit structural tests")
-struct ProcessExitStructuralTests {
-    @Test
-    func `Process.exit(_:) is reachable as a typed function value`() {
-        // Type-check: capture the static method as a function value.
-        // If the surface compiled away, this would fail to compile.
-        let fn: (Int32) -> Never = Process.exit(_:)
-        // Reference the value to silence unused-binding warnings without
-        // invoking it (invocation would terminate this test process).
-        _ = fn
+extension Process {
+    @Suite("Process.exit structural tests")
+    struct Test {
+        @Test
+        func `Process.exit(_:) is reachable as a typed function value`() {
+            // Type-check: capture the static method as a function value.
+            // If the surface compiled away, this would fail to compile.
+            let fn: (Int32) -> Never = Process.exit(_:)
+            // Reference the value to silence unused-binding warnings without
+            // invoking it (invocation would terminate this test process).
+            _ = fn
+        }
     }
 }
