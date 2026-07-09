@@ -16,8 +16,8 @@
 
     @Suite("Process spawn smoke tests")
     struct ProcessSpawnTests {
-        @Test("Spawning /usr/bin/true returns exit code 0")
-        func spawnTrue() throws {
+        @Test
+        func `Spawning /usr/bin/true returns exit code 0`() throws {
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(executable: "/usr/bin/true")
             )
@@ -26,16 +26,16 @@
             #expect(output.stderr == nil)
         }
 
-        @Test("Spawning /usr/bin/false returns exit code 1")
-        func spawnFalse() throws {
+        @Test
+        func `Spawning /usr/bin/false returns exit code 1`() throws {
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(executable: "/usr/bin/false")
             )
             #expect(output.status == .exited(code: 1))
         }
 
-        @Test("Spawning /usr/bin/env with explicit environment yields exit 0")
-        func spawnWithEnvironment() throws {
+        @Test
+        func `Spawning /usr/bin/env with explicit environment yields exit 0`() throws {
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(
                     executable: "/usr/bin/env",
@@ -46,8 +46,8 @@
             #expect(output.status == .exited(code: 0))
         }
 
-        @Test("Interior NUL in executable path is rejected at index 0")
-        func interiorNULRejected() throws {
+        @Test
+        func `Interior NUL in executable path is rejected at index 0`() throws {
             do throws(Process.Error) {
                 _ = try Process.Spawn.run(
                     Process.Spawn.Configuration(executable: "/usr/bin/\0true")
@@ -58,8 +58,8 @@
             }
         }
 
-        @Test("Spawning a non-existent executable surfaces a typed spawn error")
-        func nonexistentExecutable() throws {
+        @Test
+        func `Spawning a non-existent executable surfaces a typed spawn error`() throws {
             do throws(Process.Error) {
                 _ = try Process.Spawn.run(
                     Process.Spawn.Configuration(executable: "/nonexistent/path/binary")

@@ -22,8 +22,8 @@ import Testing
 /// `(Int32) -> Never` value without calling it.
 @Suite("Process.exit structural tests")
 struct ProcessExitStructuralTests {
-    @Test("Process.exit(_:) is reachable as a typed function value")
-    func exitIsReachable() {
+    @Test
+    func `Process.exit(_:) is reachable as a typed function value`() {
         // Type-check: capture the static method as a function value.
         // If the surface compiled away, this would fail to compile.
         let fn: (Int32) -> Never = Process.exit(_:)

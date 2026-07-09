@@ -16,8 +16,8 @@
 
     @Suite("Process spawn smoke tests (Windows)")
     struct ProcessSpawnWindowsTests {
-        @Test("Spawning cmd.exe /C 'exit 0' returns exit code 0")
-        func spawnExitZero() throws {
+        @Test
+        func `Spawning cmd.exe /C 'exit 0' returns exit code 0`() throws {
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(
                     executable: "C:\\Windows\\System32\\cmd.exe",
@@ -29,8 +29,8 @@
             #expect(output.stderr == nil)
         }
 
-        @Test("Spawning cmd.exe /C 'exit 1' returns exit code 1")
-        func spawnExitOne() throws {
+        @Test
+        func `Spawning cmd.exe /C 'exit 1' returns exit code 1`() throws {
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(
                     executable: "C:\\Windows\\System32\\cmd.exe",
@@ -40,8 +40,8 @@
             #expect(output.status == .exited(code: 1))
         }
 
-        @Test("Spawning cmd.exe with explicit environment yields exit 0")
-        func spawnWithEnvironment() throws {
+        @Test
+        func `Spawning cmd.exe with explicit environment yields exit 0`() throws {
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(
                     executable: "C:\\Windows\\System32\\cmd.exe",
@@ -52,8 +52,8 @@
             #expect(output.status == .exited(code: 0))
         }
 
-        @Test("Spawning a non-existent executable surfaces a typed spawn error")
-        func nonexistentExecutable() throws {
+        @Test
+        func `Spawning a non-existent executable surfaces a typed spawn error`() throws {
             do throws(Process.Error) {
                 _ = try Process.Spawn.run(
                     Process.Spawn.Configuration(

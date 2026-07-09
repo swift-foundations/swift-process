@@ -35,8 +35,8 @@
         /// 256 KiB chosen as 4 * default Linux pipe-buffer size — large
         /// enough to wedge any plausible buffer size while still completing
         /// fast on a green run.
-        @Test("256 KiB stderr does not deadlock (v2 would hang)", .timeLimit(.minutes(1)))
-        func concurrentDrainStderr256KiB() throws {
+        @Test(.timeLimit(.minutes(1)))
+        func `256 KiB stderr does not deadlock (v2 would hang)`() throws {
             // `dd` is universally available on macOS / Linux and emits
             // exactly the requested byte count to whichever fd we redirect.
             // Shell redirection: `1>&2` first repoints fd 1 to where fd 2
@@ -72,8 +72,8 @@
         /// Mirror test: 256 KiB to stdout while stderr stays small. Same
         /// shape as the canonical regression but with the streams swapped
         /// — confirms concurrent drain works in either direction.
-        @Test("256 KiB stdout does not deadlock", .timeLimit(.minutes(1)))
-        func concurrentDrainStdout256KiB() throws {
+        @Test(.timeLimit(.minutes(1)))
+        func `256 KiB stdout does not deadlock`() throws {
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(
                     executable: "/bin/sh",
@@ -102,8 +102,8 @@
         /// inherited stderr is suppressed). Second `dd` redirects its
         /// stdout (the data) to fd 2 first (`1>&2`), then silences its
         /// own diagnostic — 128 KiB lands on the parent's stderr pipe.
-        @Test("128 KiB on both pipes does not deadlock", .timeLimit(.minutes(1)))
-        func concurrentDrainBothPipes128KiB() throws {
+        @Test(.timeLimit(.minutes(1)))
+        func `128 KiB on both pipes does not deadlock`() throws {
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(
                     executable: "/bin/sh",
@@ -137,10 +137,9 @@
         /// elapses. Wall-clock should be ≈ 1 s, well under the 5-second
         /// test deadline.
         @Test(
-            "timeout fires: sleep 30 with 1s timeout → .signaled(SIGKILL)",
             .timeLimit(.minutes(1))
         )
-        func timeoutFires() throws {
+        func `timeout fires: sleep 30 with 1s timeout → .signaled(SIGKILL)`() throws {
             let started = ContinuousClock().now
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(
@@ -167,10 +166,9 @@
         /// `/bin/echo` with a generous timeout completes naturally —
         /// timeout does NOT fire.
         @Test(
-            "timeout does not fire when child is fast",
             .timeLimit(.minutes(1))
         )
-        func timeoutDoesNotFire() throws {
+        func `timeout does not fire when child is fast`() throws {
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(
                     executable: "/bin/echo",
@@ -186,10 +184,9 @@
         /// before being killed; both pipe captures should be present
         /// (possibly empty arrays).
         @Test(
-            "timeout fires while pipes are armed",
             .timeLimit(.minutes(1))
         )
-        func timeoutWithPipes() throws {
+        func `timeout fires while pipes are armed`() throws {
             let started = ContinuousClock().now
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(
@@ -223,10 +220,9 @@
         /// propagation is straightforward — sh-wrapped variants reparent
         /// `sleep` etc. to init, leaving our pipe-end-holders alive.
         @Test(
-            "partial capture survives the timeout kill",
             .timeLimit(.minutes(1))
         )
-        func partialCaptureBeforeKill() throws {
+        func `partial capture survives the timeout kill`() throws {
             let started = ContinuousClock().now
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(
@@ -258,8 +254,8 @@
 
         /// Default timeout (`nil`) preserves v2 behavior: indefinite wait.
         /// Verifies the default-arg of the Configuration init is `nil`.
-        @Test("nil timeout preserves indefinite-wait behavior")
-        func nilTimeoutPreserved() throws {
+        @Test
+        func `nil timeout preserves indefinite-wait behavior`() throws {
             let configuration = Process.Spawn.Configuration(
                 executable: "/usr/bin/true"
             )

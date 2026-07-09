@@ -57,8 +57,8 @@
 
         // MARK: - both captures
 
-        @Test("sh -c '… stdout … stderr …' → both captured")
-        func captureBothStreams() throws {
+        @Test
+        func `sh -c '… stdout … stderr …' → both captured`() throws {
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(
                     executable: "/bin/sh",
@@ -77,8 +77,8 @@
 
         // MARK: - workingDirectory
 
-        @Test("pwd with workingDirectory: '/tmp' → child cwd is /tmp")
-        func workingDirectoryPwd() throws {
+        @Test
+        func `pwd with workingDirectory: '/tmp' → child cwd is /tmp`() throws {
             let output = try Process.Spawn.run(
                 Process.Spawn.Configuration(
                     executable: "/bin/pwd",
@@ -97,8 +97,8 @@
 
         // MARK: - error paths
 
-        @Test("stdin: .pipe is rejected with streamPolicyUnsupported (v2)")
-        func stdinPipeRejected() throws {
+        @Test
+        func `stdin: .pipe is rejected with streamPolicyUnsupported (v2)`() throws {
             do throws(Process.Error) {
                 _ = try Process.Spawn.run(
                     Process.Spawn.Configuration(
@@ -113,8 +113,8 @@
             }
         }
 
-        @Test("spawn() rejects .pipe streams (run() is the v2 entry point)")
-        func spawnRejectsPipe() throws {
+        @Test
+        func `spawn() rejects .pipe streams (run() is the v2 entry point)`() throws {
             do throws(Process.Error) {
                 _ = try Process.Spawn.spawn(
                     Process.Spawn.Configuration(
@@ -128,8 +128,8 @@
             }
         }
 
-        @Test("spawn() rejects non-nil workingDirectory")
-        func spawnRejectsWorkingDirectory() throws {
+        @Test
+        func `spawn() rejects non-nil workingDirectory`() throws {
             do throws(Process.Error) {
                 _ = try Process.Spawn.spawn(
                     Process.Spawn.Configuration(
