@@ -9,7 +9,11 @@
 //
 // ===----------------------------------------------------------------------===//
 
-internal import POSIX_Kernel
+#if !os(Windows)
+    internal import POSIX_Kernel
+#else
+    internal import Windows_Kernel_Process
+#endif
 
 extension Process {
     /// Errors raised during subprocess spawning, waiting, or
@@ -18,6 +22,26 @@ extension Process {
     /// Each case carries domain-specific context so callers can
     /// distinguish failure modes without parsing strings.
     public enum Error: Swift.Error, Sendable, Equatable, Hashable {
+        /// The kernel-level error payload wrapped by ``spawn(_:)`` and
+        /// ``wait(_:)``.
+        ///
+        /// The spawn / wait primitives differ by platform, so this
+        /// nested alias resolves to the matching typed kernel error:
+        ///
+        /// - **POSIX:** ``ISO_9945/Kernel/Process/Error`` (the
+        ///   `posix_spawn(3)` / `waitpid(2)` wrapper).
+        /// - **Windows:** ``Windows/32/Kernel/Process/Error`` (the
+        ///   `CreateProcessW` / `WaitForSingleObject` wrapper).
+        ///
+        /// Both mirror each other's shape and are
+        /// `Sendable` + `Equatable` + `Hashable`, so ``Error`` keeps a
+        /// single, uniform conformance set on every platform.
+        #if !os(Windows)
+            public typealias Kernel = ISO_9945.Kernel.Process.Error
+        #else
+            public typealias Kernel = Windows.`32`.Kernel.Process.Error
+        #endif
+
         /// The configured executable path contained an interior
         /// NUL byte, an argument did, or the environment did.
         ///
@@ -26,11 +50,15 @@ extension Process {
         /// and `n+1...` are environment entries.
         case invalidPath(index: Int)
 
-        /// `posix_spawn(3)` failed with the wrapped POSIX error.
-        case spawn(ISO_9945.Kernel.Process.Error)
+        /// The platform spawn primitive failed with the wrapped kernel
+        /// error: `posix_spawn(3)` on POSIX, `CreateProcessW` (with its
+        /// `STARTUPINFOEX` / handle-list setup) on Windows.
+        case spawn(Kernel)
 
-        /// `waitpid(2)` failed with the wrapped POSIX error.
-        case wait(ISO_9945.Kernel.Process.Error)
+        /// The platform wait primitive failed with the wrapped kernel
+        /// error: `waitpid(2)` on POSIX, `WaitForSingleObject` /
+        /// `GetExitCodeProcess` on Windows.
+        case wait(Kernel)
 
         /// The wait operation completed but the child's status did
         /// not match a known classification (exited / signaled /
