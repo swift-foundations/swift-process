@@ -219,9 +219,14 @@
         ) throws(Process.Error) -> Windows.`32`.Kernel.Process.Spawn.Result {
             // Build a writable UTF-16 command line (CreateProcessW reserves the
             // right to mutate it in place). Format: "<exe>" arg1 arg2 ...
-            var commandLineString = configuration.executable
+            // Every token — including the executable — is quoted per the
+            // documented Win32 convention so that whitespace, embedded
+            // quotes, and backslash runs in an argument cannot be
+            // misparsed into extra argv entries or an argument-injection
+            // surface on the child side (see `_quoteWindowsCommandLineArgument`).
+            var commandLineString = _quoteWindowsCommandLineArgument(configuration.executable)
             for arg in configuration.arguments {
-                commandLineString += " " + arg
+                commandLineString += " " + _quoteWindowsCommandLineArgument(arg)
             }
             var commandLineUnits: [WCHAR] = Array(commandLineString.utf16)
             commandLineUnits.append(0)  // NUL terminator
@@ -245,21 +250,33 @@
             executableUnits.append(0)
 
             do throws(Windows.`32`.Kernel.Process.Error) {
+                // All four buffers (executable, command line, working
+                // directory, environment) are accessed from inside one
+                // nested `withUnsafe(Mutable)BufferPointer` scope stack, so
+                // every pointer handed to `spawn` is provably live for the
+                // duration of the call. `cwdUnits`/`envBlock` previously had
+                // their pointers extracted via a top-level `?.withUnsafe...
+                // { $0.baseAddress }`, which let the guaranteed-valid window
+                // end before the pointer was ever used — nesting via
+                // `_withOptionalWideBuffer` below closes that gap the same
+                // way `executableUnits`/`commandLineUnits` already were.
                 return try unsafe executableUnits.withUnsafeBufferPointer {
                     (exePtr: UnsafeBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) -> Windows.`32`.Kernel.Process.Spawn.Result in
                     try unsafe commandLineUnits.withUnsafeMutableBufferPointer {
                         (cmdPtr: inout UnsafeMutableBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) -> Windows.`32`.Kernel.Process.Spawn.Result in
-                        let cwdPtr: UnsafePointer<WCHAR>? = cwdUnits?.withUnsafeBufferPointer { unsafe $0.baseAddress }
-                        let envPtr: UnsafeMutableRawPointer? = envBlock?.withUnsafeBufferPointer {
-                            unsafe UnsafeMutableRawPointer(mutating: $0.baseAddress)
+                        try _withOptionalWideBuffer(cwdUnits) {
+                            (cwdPtr: UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) -> Windows.`32`.Kernel.Process.Spawn.Result in
+                            try _withOptionalWideBuffer(envBlock) {
+                                (envPtr: UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) -> Windows.`32`.Kernel.Process.Spawn.Result in
+                                try unsafe Windows.`32`.Kernel.Process.Spawn.spawn(
+                                    executable: exePtr.baseAddress,
+                                    commandLine: cmdPtr.baseAddress!,
+                                    environment: envPtr.map { unsafe UnsafeMutableRawPointer(mutating: $0) },
+                                    workingDirectory: cwdPtr,
+                                    actions: actions
+                                )
+                            }
                         }
-                        return try unsafe Windows.`32`.Kernel.Process.Spawn.spawn(
-                            executable: exePtr.baseAddress,
-                            commandLine: cmdPtr.baseAddress!,
-                            environment: envPtr,
-                            workingDirectory: cwdPtr,
-                            actions: actions
-                        )
                     }
                 }
             } catch {
@@ -270,6 +287,30 @@
                 case .platform(let err):
                     throw .spawn(_processErrorFromCode(err.code))
                 }
+            }
+        }
+
+        /// Runs `body` with a pointer to `array`'s contents kept alive and
+        /// valid for the entire call, or `nil` when `array` is `nil`.
+        ///
+        /// `array?.withUnsafeBufferPointer { $0.baseAddress }` (the prior
+        /// shape of this call site) lets the pointer's guaranteed-valid
+        /// window end the instant that inner call returns — the returned
+        /// pointer is only "live" by accident of the allocator not having
+        /// reused the backing storage yet before the caller dereferences
+        /// it. Nesting `body` *inside* `withUnsafeBufferPointer` instead
+        /// keeps `array` provably alive for every use of the pointer.
+        @usableFromInline
+        internal static func _withOptionalWideBuffer<R: ~Copyable>(
+            _ array: [WCHAR]?,
+            _ body: (UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) -> R
+        ) throws(Windows.`32`.Kernel.Process.Error) -> R {
+            guard let array else {
+                return try body(nil)
+            }
+            return try unsafe array.withUnsafeBufferPointer {
+                (buffer: UnsafeBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) -> R in
+                try body(unsafe buffer.baseAddress)
             }
         }
 
@@ -359,3 +400,72 @@
     }
 
 #endif  // os(Windows)
+
+// MARK: - Command-line quoting (platform-independent)
+//
+// This algorithm has no dependency on WinSDK — it is a pure `String`
+// transform — so it is compiled and unit-testable on every platform,
+// unlike the rest of this file. Keeping it un-gated lets the regression
+// test for F-002 run as a real `swift test` on any host, not only on a
+// Windows CI runner that (per the accompanying remediation report) does
+// not yet exist for this package.
+extension Process.Spawn {
+    /// Quotes a single command-line token per the documented Win32
+    /// convention (mirrors `CommandLineToArgvW`'s parsing rules), so the
+    /// child process reconstructs the exact `argv` the caller supplied.
+    ///
+    /// Without this, ``_spawnWithActions(_:actions:)`` previously joined
+    /// `executable`/`arguments` with naive spaces: an argument
+    /// containing a space split into two argv entries in the child, and
+    /// an argument containing `"` (or a crafted backslash-quote
+    /// sequence) could inject additional, attacker-controlled argv
+    /// entries — including flags the caller never passed.
+    ///
+    /// Algorithm (Microsoft's documented backslash/quote escaping):
+    /// - An argument with no whitespace, tab, or `"` and that is
+    ///   non-empty needs no quoting and is passed through unchanged.
+    /// - Otherwise the argument is wrapped in `"`. Within it, a run of
+    ///   `N` backslashes immediately followed by a `"` becomes `2N + 1`
+    ///   backslashes then `\"` (escaping both the run and the quote); a
+    ///   run of `N` backslashes at the end of the argument (immediately
+    ///   before the closing `"` this function appends) becomes `2N`
+    ///   backslashes (only the run is escaped, since the following `"`
+    ///   is the delimiter, not part of the argument).
+    @usableFromInline
+    internal static func _quoteWindowsCommandLineArgument(_ argument: Swift.String) -> Swift.String {
+        let needsQuoting =
+            argument.isEmpty
+            || argument.contains(where: { $0 == " " || $0 == "\t" || $0 == "\n" || $0 == "\u{0B}" || $0 == "\"" })
+        guard needsQuoting else {
+            return argument
+        }
+
+        var quoted: Swift.String = "\""
+        var backslashRun = 0
+        for character in argument {
+            if character == "\\" {
+                backslashRun += 1
+                continue
+            }
+            if character == "\"" {
+                // Escape every backslash in the run, then escape the quote.
+                quoted += Swift.String(repeating: "\\", count: backslashRun * 2 + 1)
+                quoted += "\""
+                backslashRun = 0
+                continue
+            }
+            if backslashRun > 0 {
+                // An unescaped run followed by a non-quote character
+                // stays literal — only runs abutting a `"` are doubled.
+                quoted += Swift.String(repeating: "\\", count: backslashRun)
+                backslashRun = 0
+            }
+            quoted.append(character)
+        }
+        // A trailing run sits immediately before the closing quote we
+        // are about to append, so it must be doubled.
+        quoted += Swift.String(repeating: "\\", count: backslashRun * 2)
+        quoted += "\""
+        return quoted
+    }
+}
