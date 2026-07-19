@@ -53,12 +53,15 @@ extension Process {
             /// The HANDLE of the spawned child process (Windows).
             ///
             /// Owns the process handle and (consumed) thread handle from
-            /// `CreateProcessW`. Both handles are closed when `Handle` is
-            /// dropped or `wait()` returns.
+            /// `CreateProcessW` directly as `~Copyable` ``Descriptor``
+            /// values. Both handles are closed on drop (`Descriptor.deinit`
+            /// calls `CloseHandle`) — either when `Handle` itself is
+            /// dropped without `wait()`, or when `wait()` consumes and
+            /// releases them.
             @usableFromInline
-            internal var _processHandleRaw: UInt
+            internal var _processHandle: Windows.`32`.Kernel.Descriptor
             @usableFromInline
-            internal var _threadHandleRaw: UInt
+            internal var _threadHandle: Windows.`32`.Kernel.Descriptor
             /// The numeric process ID (Windows).
             public let processID: UInt32
         #endif
@@ -74,30 +77,14 @@ extension Process {
             @usableFromInline
             internal init(processInfo: consuming Windows.`32`.Kernel.Process.Spawn.Result) {
                 let info = consume processInfo
-                unsafe (self._processHandleRaw = info.processHandle._raw)
-                unsafe (self._threadHandleRaw = info.threadHandle._raw)
+                // Move the ~Copyable Descriptors themselves onto self —
+                // never touch their raw bits here. Each Descriptor's own
+                // deinit (CloseHandle) fires exactly once, whenever that
+                // Descriptor value is finally dropped (self's deinit if
+                // never waited, or wait()'s consuming scope-exit).
+                self._processHandle = info.processHandle
+                self._threadHandle = info.threadHandle
                 self.processID = info.processID
-                // The Result's Descriptors will be released via consuming;
-                // the deinit on Windows.`32`.Kernel.Descriptor closes the
-                // HANDLEs we just snapshotted into our raw storage. Disarm
-                // the consumed Descriptors' raw bits so we own them.
-                // Note: We accessed _raw above, but the consumed Descriptor
-                // values are about to be dropped; on Windows the deinit will
-                // call CloseHandle. We need to disarm them so we keep the
-                // handles alive for our own wait/close.
-                //
-                // The structural way to do this is to consume the Descriptor
-                // values into our own ~Copyable storage. Since the inner
-                // Descriptor is ~Copyable already, the consume above moved
-                // the handles into temporaries that will deinit and close
-                // them — wrong. Restructure: keep the Descriptor values
-                // alive on self.
-                //
-                // FIXME: This implementation snapshots the raw bits then
-                // lets the Descriptors drop, which closes the handles
-                // prematurely. Pending a follow-on cycle to refactor Handle
-                // to store the Descriptors directly. For now, document the
-                // gap and rely on the wait() path being tested at v3.
             }
         #endif
 
@@ -139,8 +126,14 @@ extension Process {
             ///   ``Process/Error/unrecognizedStatus`` if the exit code does
             ///   not match a known classification.
             public consuming func wait() throws(Process.Error) -> Process.Status {
-                let processHandle = unsafe UnsafeMutableRawPointer(bitPattern: self._processHandleRaw)
-                let threadHandle = unsafe UnsafeMutableRawPointer(bitPattern: self._threadHandleRaw)
+                // The thread handle is not needed for waiting; consume and
+                // drop it immediately. Its deinit (CloseHandle) runs right
+                // here — no manual CloseHandle call needed, and no risk of
+                // double-closing a HANDLE some other Descriptor already owns.
+                _ = consume self._threadHandle
+                let processHandleDescriptor = consume self._processHandle
+
+                let processHandle = unsafe UnsafeMutableRawPointer(bitPattern: processHandleDescriptor._rawValue)
 
                 guard let processHandle else {
                     throw .unrecognizedStatus
@@ -149,22 +142,22 @@ extension Process {
                 let waitResult = unsafe WaitForSingleObject(processHandle, INFINITE)
                 guard waitResult == WAIT_OBJECT_0 else {
                     let code: Error_Primitives.Error.Code = .win32(GetLastError())
-                    if let threadHandle { _ = unsafe CloseHandle(threadHandle) }
-                    _ = unsafe CloseHandle(processHandle)
                     throw .wait(.create(code))
                 }
 
                 var exitCode: DWORD = 0
                 let got = unsafe GetExitCodeProcess(processHandle, &exitCode)
 
-                if let threadHandle { _ = unsafe CloseHandle(threadHandle) }
-                _ = unsafe CloseHandle(processHandle)
-
                 guard got else {
                     let code: Error_Primitives.Error.Code = .win32(GetLastError())
                     throw .wait(.create(code))
                 }
 
+                // `processHandleDescriptor` closes via its own
+                // `Descriptor.deinit` when this scope exits — on every
+                // return path, including the throws above, since Swift
+                // runs local deinitializers during structured error
+                // unwinding.
                 return .exited(code: Int32(bitPattern: exitCode))
             }
         #endif
