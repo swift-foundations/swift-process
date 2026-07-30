@@ -631,7 +631,11 @@
             // watchdog thread has still run to completion by the time
             // `pthread_join` returns any error other than success; there
             // is nothing actionable to do with the failure at teardown.
-            try? thread.join()
+            do throws(ISO_9945.Kernel.Thread.Error) {
+                try thread.join()
+            } catch {
+                // Non-fatal — see comment above.
+            }
 
             // Now safe to close the read end.
             if readFd >= 0 {
