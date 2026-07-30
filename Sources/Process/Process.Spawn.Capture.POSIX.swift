@@ -627,8 +627,11 @@
 
             // Block until the watchdog has exited. The watchdog never
             // touches `pid` — and never reads from `shutdownReadFd` —
-            // after this point.
-            thread.join()
+            // after this point. A `join` failure is non-fatal here — the
+            // watchdog thread has still run to completion by the time
+            // `pthread_join` returns any error other than success; there
+            // is nothing actionable to do with the failure at teardown.
+            try? thread.join()
 
             // Now safe to close the read end.
             if readFd >= 0 {
@@ -702,7 +705,7 @@
         }
 
         /// Extracts the `Error_Primitives.Error.Code` from a
-        /// ``ISO_9945/Kernel/Thread/Error``. All three cases carry a code;
+        /// ``ISO_9945/Kernel/Thread/Error``. All five cases carry a code;
         /// this helper centralises the destructure for call sites that
         /// route through ``Process/Error/capture(_:)``.
         @usableFromInline
@@ -713,6 +716,8 @@
             case .create(let code): return code
             case .join(let code): return code
             case .detach(let code): return code
+            case .keyCreate(let code): return code
+            case .keySet(let code): return code
             }
         }
 
