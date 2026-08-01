@@ -29,7 +29,7 @@ extension Process.Spawn {
         // MARK: - No quoting needed
 
         @Test("A simple token with no whitespace or quotes passes through unchanged")
-        func plainTokenPassesThroughUnchanged() {
+        func `plainTokenPassesThroughUnchanged`() {
             #expect(Process.Spawn._quoteWindowsCommandLineArgument("hello") == "hello")
             #expect(
                 Process.Spawn._quoteWindowsCommandLineArgument("C:\\Windows\\System32\\cmd.exe")
@@ -40,7 +40,7 @@ extension Process.Spawn {
         // MARK: - Injection surface: whitespace
 
         @Test("An argument containing a space is wrapped in quotes rather than naively space-joined")
-        func argumentContainingSpaceIsQuoted() {
+        func `argumentContainingSpaceIsQuoted`() {
             // Pre-fix, `"echo hello" + " " + "two words"` naively space-joined
             // to `echo hello two words`, which CommandLineToArgvW on the
             // child side parses as FOUR argv entries, not two — the exact
@@ -49,14 +49,14 @@ extension Process.Spawn {
         }
 
         @Test("An empty argument is quoted so it still occupies its own argv slot")
-        func emptyArgumentIsQuoted() {
+        func `emptyArgumentIsQuoted`() {
             #expect(Process.Spawn._quoteWindowsCommandLineArgument("") == "\"\"")
         }
 
         // MARK: - Injection surface: embedded quotes
 
         @Test("An embedded double quote is escaped, not passed through raw")
-        func embeddedQuoteIsEscaped() {
+        func `embeddedQuoteIsEscaped`() {
             // Pre-fix, a caller-supplied argument like `foo" injected"` was
             // concatenated into the command line verbatim: the un-escaped
             // `"` let the child's argv parser treat the remainder as new,
@@ -67,7 +67,7 @@ extension Process.Spawn {
         // MARK: - Backslash-run edge cases (Microsoft's documented algorithm)
 
         @Test("A trailing backslash run is doubled before the closing quote")
-        func trailingBackslashRunIsDoubled() {
+        func `trailingBackslashRunIsDoubled`() {
             // "a\" (one trailing backslash needing quoting because of the
             // embedded space) → `"a\\ "` is wrong; the correct expansion
             // doubles only the trailing run, then closes the quote.
@@ -75,7 +75,7 @@ extension Process.Spawn {
         }
 
         @Test("A backslash run immediately before an embedded quote is doubled-plus-one, then the quote is escaped")
-        func backslashRunBeforeEmbeddedQuoteIsDoubledPlusOne() {
+        func `backslashRunBeforeEmbeddedQuoteIsDoubledPlusOne`() {
             // `a\"b` (one backslash directly preceding a literal `"`)
             // expands to two backslashes (escaping the run) + an escaped
             // quote + the rest: `"a\\\"b"`.
@@ -83,7 +83,7 @@ extension Process.Spawn {
         }
 
         @Test("A backslash run not adjacent to a quote is left literal")
-        func backslashRunNotAdjacentToQuoteStaysLiteral() {
+        func `backslashRunNotAdjacentToQuoteStaysLiteral`() {
             // Backslashes that never abut a `"` are ordinary path
             // separators and must NOT be doubled, or Windows paths break.
             #expect(
@@ -95,7 +95,7 @@ extension Process.Spawn {
         // MARK: - Executable token is quoted too
 
         @Test("The executable token itself is quoted when it contains a space, not just the arguments")
-        func executableTokenIsQuotedWhenItContainsASpace() {
+        func `executableTokenIsQuotedWhenItContainsASpace`() {
             // Pre-fix, only a naive space-join was used for the whole
             // command line — `configuration.executable` was never quoted
             // even though it is the first token CreateProcessW's

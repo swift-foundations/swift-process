@@ -21,7 +21,7 @@
             // MARK: - stdout capture
 
             @Test("echo hello → captured stdout is 'hello\\n'")
-            func captureEchoStdout() throws {
+            func `captureEchoStdout`() throws {
                 let output = try Process.Spawn.run(
                     Process.Spawn.Configuration(
                         executable: "/bin/echo",
@@ -40,7 +40,7 @@
             // MARK: - stderr capture
 
             @Test("sh -c 'echo err >&2' → captured stderr is 'err\\n'")
-            func captureStderrFromSubshell() throws {
+            func `captureStderrFromSubshell`() throws {
                 let output = try Process.Spawn.run(
                     Process.Spawn.Configuration(
                         executable: "/bin/sh",

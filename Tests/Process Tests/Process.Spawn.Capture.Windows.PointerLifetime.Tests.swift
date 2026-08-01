@@ -28,7 +28,7 @@
             @Test(
                 "Spawn with simultaneous workingDirectory + environment: both the child's cwd and its environment reflect the values passed, not garbage from a dangling pointer"
             )
-            func spawnWithWorkingDirectoryAndEnvironmentBothTakeEffect() throws {
+            func `spawnWithWorkingDirectoryAndEnvironmentBothTakeEffect`() throws {
                 let output = try Process.Spawn.run(
                     Process.Spawn.Configuration(
                         executable: "C:\\Windows\\System32\\cmd.exe",

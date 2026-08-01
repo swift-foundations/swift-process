@@ -21,7 +21,7 @@
             // MARK: - stdout capture
 
             @Test("cmd.exe /C 'echo hello' → captured stdout is 'hello\\r\\n'")
-            func captureEchoStdout() throws {
+            func `captureEchoStdout`() throws {
                 let output = try Process.Spawn.run(
                     Process.Spawn.Configuration(
                         executable: "C:\\Windows\\System32\\cmd.exe",
@@ -40,7 +40,7 @@
             // MARK: - stderr capture
 
             @Test("cmd.exe /C 'echo err 1>&2' → captured stderr is 'err\\r\\n'")
-            func captureStderrFromCmd() throws {
+            func `captureStderrFromCmd`() throws {
                 let output = try Process.Spawn.run(
                     Process.Spawn.Configuration(
                         executable: "C:\\Windows\\System32\\cmd.exe",
@@ -85,7 +85,7 @@
             // MARK: - workingDirectory
 
             @Test("cmd.exe /C 'echo %CD%' with workingDirectory: 'C:\\Windows' → cwd is C:\\Windows")
-            func workingDirectoryCD() throws {
+            func `workingDirectoryCD`() throws {
                 let output = try Process.Spawn.run(
                     Process.Spawn.Configuration(
                         executable: "C:\\Windows\\System32\\cmd.exe",
