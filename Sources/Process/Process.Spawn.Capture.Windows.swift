@@ -270,13 +270,13 @@
                 // `_withOptionalWideBuffer` below closes that gap the same
                 // way `executableUnits`/`commandLineUnits` already were.
                 try unsafe executableUnits.withUnsafeBufferPointer {
-                    (exePtr: UnsafeBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) -> Void in
+                    (exePtr: UnsafeBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) in
                     try unsafe commandLineUnits.withUnsafeMutableBufferPointer {
-                        (cmdPtr: inout UnsafeMutableBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) -> Void in
+                        (cmdPtr: inout UnsafeMutableBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) in
                         try _withOptionalWideBuffer(cwdUnits) {
-                            (cwdPtr: UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) -> Void in
+                            (cwdPtr: UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) in
                             try _withOptionalWideBuffer(envBlock) {
-                                (envPtr: UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) -> Void in
+                                (envPtr: UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) in
                                 spawnedResult = try unsafe Windows.`32`.Kernel.Process.Spawn.spawn(
                                     executable: exePtr.baseAddress,
                                     commandLine: cmdPtr.baseAddress!,
