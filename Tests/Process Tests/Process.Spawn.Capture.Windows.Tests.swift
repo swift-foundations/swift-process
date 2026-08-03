@@ -39,7 +39,7 @@
 
             // MARK: - stderr capture
 
-            @Test("cmd.exe /C 'echo err 1>&2' → captured stderr is 'err\\r\\n'")
+            @Test("cmd.exe /C 'echo err 1>&2' → captured stderr is 'err \\r\\n'")
             func `captureStderrFromCmd`() throws {
                 let output = try Process.Spawn.run(
                     Process.Spawn.Configuration(
@@ -53,7 +53,11 @@
 
                 let bytes = try #require(output.stderr)
                 let text = Swift.String(decoding: bytes, as: UTF8.self)
-                #expect(text == "err\r\n")
+                // `echo err 1>&2` echoes everything between `echo ` and the
+                // redirection operator, so cmd.exe emits `err` followed by the
+                // space that precedes `1>&2` — the trailing space below is
+                // cmd.exe's documented behaviour, not a stray character.
+                #expect(text == "err \r\n")
             }
 
             // MARK: - both captures
@@ -159,9 +163,15 @@
     // MARK: - String trimming helper
 
     extension Swift.String {
+        /// Drops trailing line terminators, including the Windows CRLF pair.
+        ///
+        /// `"\r\n"` is one `Character` — an extended grapheme cluster — so a
+        /// loop testing `last == "\n" || last == "\r"` matches neither half of
+        /// a CRLF terminator and silently trims nothing. `Character.isNewline`
+        /// is true for the CRLF cluster as well as for a lone CR or LF.
         fileprivate var trimmingTrailingNewlinesWin: Swift.String {
             var s = self
-            while s.last == "\n" || s.last == "\r" {
+            while let last = s.last, last.isNewline {
                 s.removeLast()
             }
             return s
