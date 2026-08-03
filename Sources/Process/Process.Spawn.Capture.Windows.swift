@@ -360,11 +360,20 @@
             // The Tagged-Pair Descriptors does not have a typed Close.write
             // helper on the Windows side yet (v2 ships the read accessor and
             // deinit-close). Extract the read end manually.
-            let pair = consume pipe
-            let read = pair.read
-            // The write end is closed when pair goes out of scope (deinit
-            // calls CloseHandle).
-            _ = pair.write
+            //
+            // `Descriptors.read` / `.write` are borrowing `_read` coroutine
+            // accessors (they yield into the underlying `Pair`'s fields),
+            // so they can only be borrowed, not consumed — unlike
+            // `Tagged.underlying` and `Pair.first` / `.second`, which are
+            // `@frozen` public STORED properties (frozen even though the
+            // wrapped `Descriptor` itself is non-frozen) and therefore
+            // legal to consume individually across the module boundary.
+            // Route through those instead of the borrowing accessors.
+            let pair = consume pipe.underlying
+            let read = pair.first
+            // The write end is closed when `pair.second` is dropped below
+            // (deinit calls CloseHandle).
+            _ = pair.second
             return read
         }
 
