@@ -249,6 +249,15 @@
             var executableUnits = Array(configuration.executable.utf16)
             executableUnits.append(0)
 
+            // `Windows.`32`.Kernel.Process.Spawn.Result` is `~Copyable` and
+            // non-`@frozen` across the module boundary, so it cannot flow
+            // through `Array.withUnsafe(Mutable)BufferPointer<R>` — the
+            // stdlib constrains that closure's return type `R` to
+            // `Copyable`. Every nested closure below therefore returns
+            // `Void`, and `spawn`'s result is captured by mutating this
+            // outer binding instead of being returned through them.
+            var spawnedResult: Windows.`32`.Kernel.Process.Spawn.Result?
+
             do throws(Windows.`32`.Kernel.Process.Error) {
                 // All four buffers (executable, command line, working
                 // directory, environment) are accessed from inside one
@@ -260,15 +269,15 @@
                 // end before the pointer was ever used — nesting via
                 // `_withOptionalWideBuffer` below closes that gap the same
                 // way `executableUnits`/`commandLineUnits` already were.
-                return try unsafe executableUnits.withUnsafeBufferPointer {
-                    (exePtr: UnsafeBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) -> Windows.`32`.Kernel.Process.Spawn.Result in
+                try unsafe executableUnits.withUnsafeBufferPointer {
+                    (exePtr: UnsafeBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) -> Void in
                     try unsafe commandLineUnits.withUnsafeMutableBufferPointer {
-                        (cmdPtr: inout UnsafeMutableBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) -> Windows.`32`.Kernel.Process.Spawn.Result in
+                        (cmdPtr: inout UnsafeMutableBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) -> Void in
                         try _withOptionalWideBuffer(cwdUnits) {
-                            (cwdPtr: UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) -> Windows.`32`.Kernel.Process.Spawn.Result in
+                            (cwdPtr: UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) -> Void in
                             try _withOptionalWideBuffer(envBlock) {
-                                (envPtr: UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) -> Windows.`32`.Kernel.Process.Spawn.Result in
-                                try unsafe Windows.`32`.Kernel.Process.Spawn.spawn(
+                                (envPtr: UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) -> Void in
+                                spawnedResult = try unsafe Windows.`32`.Kernel.Process.Spawn.spawn(
                                     executable: exePtr.baseAddress,
                                     commandLine: cmdPtr.baseAddress!,
                                     environment: envPtr.map { unsafe UnsafeMutableRawPointer(mutating: $0) },
@@ -288,6 +297,17 @@
                     throw .spawn(_processErrorFromCode(err.code))
                 }
             }
+
+            guard let result = consume spawnedResult else {
+                // Unreachable: the `do` block above either throws —
+                // handled by the `catch` above — or `spawn` succeeds and
+                // assigns `spawnedResult` before returning; no path exits
+                // normally without one or the other.
+                preconditionFailure(
+                    "Windows.`32`.Kernel.Process.Spawn.spawn produced neither a result nor a thrown error"
+                )
+            }
+            return result
         }
 
         /// Runs `body` with a pointer to `array`'s contents kept alive and
@@ -300,8 +320,24 @@
         /// reused the backing storage yet before the caller dereferences
         /// it. Nesting `body` *inside* `withUnsafeBufferPointer` instead
         /// keeps `array` provably alive for every use of the pointer.
-        @usableFromInline
-        internal static func _withOptionalWideBuffer<R: ~Copyable>(
+        ///
+        /// `R` is intentionally `Copyable` (not `~Copyable`): the
+        /// implementation itself routes through
+        /// `Array.withUnsafeBufferPointer<R>`, whose own `R` the stdlib
+        /// constrains to `Copyable` — a `~Copyable` bound here would
+        /// promise a capability the body cannot actually honor. Callers
+        /// that need to hand a `~Copyable` value out of the `body`
+        /// closure (as `_spawnWithActions` does for
+        /// `Windows.`32`.Kernel.Process.Spawn.Result`) capture it via an
+        /// outer `var` instead of returning it through `R`.
+        ///
+        /// Not `@usableFromInline`: `WCHAR` is only `internal`-visible in
+        /// this file (imported via `internal import WinSDK`), and
+        /// `@usableFromInline` requires every type in the signature to be
+        /// at least as visible as the declaration itself. Nothing in this
+        /// module calls this helper from an `@inlinable` context, so
+        /// plain `internal` is sufficient.
+        internal static func _withOptionalWideBuffer<R>(
             _ array: [WCHAR]?,
             _ body: (UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) -> R
         ) throws(Windows.`32`.Kernel.Process.Error) -> R {
@@ -339,7 +375,12 @@
             var buffer: [UInt8] = []
             var chunk = [UInt8](repeating: 0, count: 4096)
 
-            let handle = unsafe UnsafeMutableRawPointer(bitPattern: descriptor._raw)
+            // `_rawValue`, not `_raw`: `Descriptor._raw` is `package`-level
+            // in swift-windows-32 and inaccessible here; `_rawValue` is the
+            // public accessor meant for exactly this cross-module read
+            // (see `Process.Handle.wait()`'s matching use on the same
+            // type).
+            let handle = unsafe UnsafeMutableRawPointer(bitPattern: descriptor._rawValue)
             guard let handle else {
                 throw .capture(.win32(UInt32(ERROR_INVALID_HANDLE)))
             }
@@ -374,7 +415,10 @@
         /// NUL-separated, double-NUL-terminated block suitable for
         /// `CreateProcessW`'s `lpEnvironment` parameter (with
         /// `CREATE_UNICODE_ENVIRONMENT`).
-        @usableFromInline
+        ///
+        /// Not `@usableFromInline`: see `_withOptionalWideBuffer`'s doc
+        /// comment — `WCHAR` is only `internal`-visible in this file, and
+        /// nothing calls this helper from an `@inlinable` context.
         internal static func _flattenWideEnvironment(
             _ environment: [Swift.String: Swift.String]?
         ) -> [WCHAR]? {
