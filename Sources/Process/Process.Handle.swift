@@ -50,18 +50,24 @@ extension Process {
             /// The PID of the spawned child (POSIX).
             public let processID: ISO_9945.Kernel.Process.ID
         #else
-            /// The HANDLE of the spawned child process (Windows).
+            /// The spawn result bundling the process/thread `Descriptor`s
+            /// and IDs (Windows).
             ///
-            /// Owns the process handle and (consumed) thread handle from
-            /// `CreateProcessW` directly as `~Copyable` ``Descriptor``
-            /// values. Both handles are closed on drop (`Descriptor.deinit`
-            /// calls `CloseHandle`) — either when `Handle` itself is
-            /// dropped without `wait()`, or when `wait()` consumes and
-            /// releases them.
+            /// `Windows.\`32\`.Kernel.Process.Spawn.Result` is `~Copyable`,
+            /// non-`@frozen`, and defined in a different module — Swift
+            /// disallows partially consuming (moving out) an individual
+            /// stored property of a non-frozen `~Copyable` aggregate from
+            /// outside its defining module, since doing so would require
+            /// synthesizing a "destroy the remaining fields" operation
+            /// that needs known layout. `Handle` therefore keeps the
+            /// whole `Result` intact instead of splitting it into
+            /// separate `_processHandle` / `_threadHandle` fields; both
+            /// handles close together — via `Result`'s own field
+            /// deinitializers — whenever `_spawnResult` is finally
+            /// dropped, either at ``wait()``'s scope exit or at
+            /// `Handle`'s own deinit if never waited.
             @usableFromInline
-            internal var _processHandle: Windows.`32`.Kernel.Descriptor
-            @usableFromInline
-            internal var _threadHandle: Windows.`32`.Kernel.Descriptor
+            internal var _spawnResult: Windows.`32`.Kernel.Process.Spawn.Result
             /// The numeric process ID (Windows).
             public let processID: UInt32
         #endif
@@ -72,19 +78,19 @@ extension Process {
                 self.processID = processID
             }
         #else
-            /// Adopts ownership of the spawn result's handles. The handles
-            /// are closed when the Handle is dropped or wait() completes.
+            /// Adopts ownership of the spawn result. The handles inside
+            /// it are closed when the Handle is dropped or wait()
+            /// completes.
             @usableFromInline
             internal init(processInfo: consuming Windows.`32`.Kernel.Process.Spawn.Result) {
-                let info = consume processInfo
-                // Move the ~Copyable Descriptors themselves onto self —
-                // never touch their raw bits here. Each Descriptor's own
-                // deinit (CloseHandle) fires exactly once, whenever that
-                // Descriptor value is finally dropped (self's deinit if
-                // never waited, or wait()'s consuming scope-exit).
-                self._processHandle = info.processHandle
-                self._threadHandle = info.threadHandle
-                self.processID = info.processID
+                // Read the (Copyable) processID before consuming the
+                // whole value below — a borrow-read of a Copyable field
+                // is unrestricted; only moving an individual ~Copyable
+                // field out of `processInfo` is what cross-module
+                // non-frozen resilience forbids (see `_spawnResult`'s
+                // doc comment).
+                self.processID = processInfo.processID
+                self._spawnResult = consume processInfo
             }
         #endif
 
@@ -126,14 +132,21 @@ extension Process {
             ///   ``Process/Error/unrecognizedStatus`` if the exit code does
             ///   not match a known classification.
             public consuming func wait() throws(Process.Error) -> Process.Status {
-                // The thread handle is not needed for waiting; consume and
-                // drop it immediately. Its deinit (CloseHandle) runs right
-                // here — no manual CloseHandle call needed, and no risk of
-                // double-closing a HANDLE some other Descriptor already owns.
-                _ = consume self._threadHandle
-                let processHandleDescriptor = consume self._processHandle
-
-                let processHandle = unsafe UnsafeMutableRawPointer(bitPattern: processHandleDescriptor._rawValue)
+                // Read the process handle's raw representation via a
+                // borrow — `_rawValue` is a Copyable `UInt`, so this is a
+                // plain read, not a move of the `~Copyable` `Descriptor`
+                // (see `_spawnResult`'s doc comment for why the
+                // `Descriptor`s cannot be moved out individually). The
+                // thread handle can no longer be dropped up front the
+                // way a same-module `~Copyable` field could be; it stays
+                // open until `self` (and its `_spawnResult`) deinitializes
+                // at this function's scope exit, closing both handles
+                // together. Windows does not require the thread handle
+                // to close before waiting on the process handle, so this
+                // is a timing difference only, not a correctness one.
+                let processHandle = unsafe UnsafeMutableRawPointer(
+                    bitPattern: self._spawnResult.processHandle._rawValue
+                )
 
                 guard let processHandle else {
                     throw .unrecognizedStatus
@@ -153,11 +166,11 @@ extension Process {
                     throw .wait(.create(code))
                 }
 
-                // `processHandleDescriptor` closes via its own
-                // `Descriptor.deinit` when this scope exits — on every
-                // return path, including the throws above, since Swift
-                // runs local deinitializers during structured error
-                // unwinding.
+                // `self` — and its `_spawnResult` — deinitializes here at
+                // scope exit on every return path, including the throws
+                // above (Swift runs local deinitializers during
+                // structured error unwinding), closing both the process
+                // and thread `Descriptor`s together.
                 return .exited(code: Int32(bitPattern: exitCode))
             }
         #endif
