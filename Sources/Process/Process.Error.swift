@@ -42,6 +42,10 @@ extension Process {
             public typealias Kernel = Windows.`32`.Kernel.Process.Error
         #endif
 
+        /// No executable matching the bare command name was available under
+        /// the effective `PATH` and, on Windows, `PATHEXT` policy.
+        case missing(command: Swift.String)
+
         /// The configured executable path contained an interior
         /// NUL byte, an argument did, or the environment did.
         ///
