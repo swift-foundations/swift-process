@@ -31,8 +31,7 @@ extension Process {
     /// is the `fork()`-child primitive.
     ///
     /// The namespace is platform-independent; only the implementations
-    /// below are conditional. On Windows ``normal(_:)`` is currently
-    /// unavailable — see its note.
+    /// below are conditional.
     public enum Exit: Sendable {}
 }
 
@@ -101,31 +100,27 @@ extension Process {
             Windows.Kernel.Process.Exit.now(UInt32(bitPattern: status))
         }
 
-        /// Normal termination — **not modeled on Windows yet.**
+        /// Terminates the current process normally: runs `atexit`
+        /// handlers and flushes stdio buffers before terminating.
         ///
-        /// The POSIX counterpart flushes stdio and runs `atexit` handlers.
-        /// The Windows analogue is presumed to be the CRT `exit()` rather
-        /// than `ExitProcess`, but that parallel is **unverified** and the
-        /// call is not modeled at L2 (`swift-windows-32` declares only
-        /// ``Windows/Kernel/Process/Exit/now(_:)``, whose own doc claim of
-        /// equivalence to `_exit()` is likewise unverified).
+        /// This is the correct call for an ordinary program ending itself.
         ///
-        /// This is deliberately `unavailable` rather than aliased to
-        /// ``now(_:)``: silently substituting the non-flushing call would
-        /// reintroduce, on Windows only, exactly the discard-under-
-        /// redirection defect this API exists to fix. A build error naming
-        /// the missing work is the safer failure.
-        @available(
-            *,
-            unavailable,
-            message: """
-                Normal (stdio-flushing) termination is not modeled on Windows. \
-                Requires a Win32 L2 model of CRT exit() in swift-windows-32; \
-                the ExitProcess/exit() parallel is unverified.
-                """
-        )
+        /// Composes ``Windows/Kernel/Process/Exit/normal(_:)``, the L2
+        /// typed wrapper over CRT `exit()`. Per the Microsoft UCRT
+        /// documentation, `exit` calls, in LIFO order, the functions
+        /// registered by `atexit` and `_onexit`, then flushes all stream
+        /// buffers before terminating — the verified parallel to POSIX
+        /// `exit(3)`.
+        ///
+        /// - Parameter status: The exit status. 0 typically indicates
+        ///   success; non-zero indicates failure. Standard conventions:
+        ///   - `0`: success
+        ///   - `1`: general error
+        ///   - `64` (`EX_USAGE`): usage error
+        /// - Returns: Never returns; the process is terminated.
+        @inlinable
         public static func normal(_ status: Int32) -> Never {
-            fatalError("unavailable")
+            Windows.Kernel.Process.Exit.normal(status)
         }
     }
 
