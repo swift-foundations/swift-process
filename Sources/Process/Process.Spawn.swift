@@ -68,6 +68,7 @@ extension Process.Spawn {
         _ configuration: Configuration
     ) throws(Process.Error) -> Process.Handle {
         try _checkSpawnSupports(configuration)
+        let configuration = try _resolvingExecutable(in: configuration)
 
         #if !os(Windows)
             let argv = [configuration.executable] + configuration.arguments
@@ -194,6 +195,7 @@ extension Process.Spawn {
             return Process.Output(status: status)
         }
 
+        let configuration = try _resolvingExecutable(in: configuration)
         return try _runWithCapture(configuration)
     }
 }
