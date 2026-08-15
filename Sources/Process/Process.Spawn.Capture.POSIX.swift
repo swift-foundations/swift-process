@@ -256,7 +256,9 @@
 
     extension Process.Spawn {
         @usableFromInline
-        internal static func _makeActions() throws(Process.Error) -> ISO_9945.Kernel.Process.Spawn.Actions {
+        internal static func _makeActions() throws(Process.Error)
+            -> ISO_9945.Kernel.Process.Spawn.Actions
+        {
             do throws(ISO_9945.Kernel.Process.Error) {
                 return try ISO_9945.Kernel.Process.Spawn.Actions()
             } catch {
@@ -378,7 +380,9 @@
             var chunk = [UInt8](repeating: 0, count: 4096)
             while true {
                 let n = try unsafe chunk.withUnsafeMutableBufferPointer {
-                    (raw: inout UnsafeMutableBufferPointer<UInt8>) throws(ISO_9945.Kernel.IO.Read.Error) -> Int in
+                    (
+                        raw: inout UnsafeMutableBufferPointer<UInt8>
+                    ) throws(ISO_9945.Kernel.IO.Read.Error) -> Int in
                     let bytes = UnsafeMutableRawBufferPointer(raw)
                     return try unsafe POSIX.Kernel.IO.Read.read(descriptor, into: bytes)
                 }
@@ -453,9 +457,14 @@
                     let n: Int
                     do throws(ISO_9945.Kernel.IO.Read.Error) {
                         n = try unsafe chunk.withUnsafeMutableBufferPointer {
-                            (raw: inout UnsafeMutableBufferPointer<UInt8>) throws(ISO_9945.Kernel.IO.Read.Error) -> Int in
+                            (
+                                raw: inout UnsafeMutableBufferPointer<UInt8>
+                            ) throws(ISO_9945.Kernel.IO.Read.Error) -> Int in
                             let bytes = UnsafeMutableRawBufferPointer(raw)
-                            return try unsafe POSIX.Kernel.IO.Read.read(stdoutDescriptor, into: bytes)
+                            return try unsafe POSIX.Kernel.IO.Read.read(
+                                stdoutDescriptor,
+                                into: bytes
+                            )
                         }
                     } catch {
                         throw .capture(error.code)
@@ -471,9 +480,14 @@
                     let n: Int
                     do throws(ISO_9945.Kernel.IO.Read.Error) {
                         n = try unsafe chunk.withUnsafeMutableBufferPointer {
-                            (raw: inout UnsafeMutableBufferPointer<UInt8>) throws(ISO_9945.Kernel.IO.Read.Error) -> Int in
+                            (
+                                raw: inout UnsafeMutableBufferPointer<UInt8>
+                            ) throws(ISO_9945.Kernel.IO.Read.Error) -> Int in
                             let bytes = UnsafeMutableRawBufferPointer(raw)
-                            return try unsafe POSIX.Kernel.IO.Read.read(stderrDescriptor, into: bytes)
+                            return try unsafe POSIX.Kernel.IO.Read.read(
+                                stderrDescriptor,
+                                into: bytes
+                            )
                         }
                     } catch {
                         throw .capture(error.code)

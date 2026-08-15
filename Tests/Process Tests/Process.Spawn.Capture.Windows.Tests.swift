@@ -79,7 +79,8 @@
             func `powershell.exe Write-Output 'out' + Write-Error 'err' → both captured`() throws {
                 let output = try Process.Spawn.run(
                     Process.Spawn.Configuration(
-                        executable: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                        executable:
+                            "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
                         arguments: [
                             "-NoProfile",
                             "-Command",
@@ -101,7 +102,9 @@
 
             // MARK: - workingDirectory
 
-            @Test("cmd.exe /C 'echo %CD%' with workingDirectory: 'C:\\Windows' → cwd is C:\\Windows")
+            @Test(
+                "cmd.exe /C 'echo %CD%' with workingDirectory: 'C:\\Windows' → cwd is C:\\Windows"
+            )
             func `workingDirectoryCD`() throws {
                 let output = try Process.Spawn.run(
                     Process.Spawn.Configuration(
