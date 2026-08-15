@@ -20,6 +20,7 @@
 // host for this finding.
 
 import Testing
+
 @testable import Process
 
 extension Process.Spawn {
@@ -39,7 +40,9 @@ extension Process.Spawn {
 
         // MARK: - Injection surface: whitespace
 
-        @Test("An argument containing a space is wrapped in quotes rather than naively space-joined")
+        @Test(
+            "An argument containing a space is wrapped in quotes rather than naively space-joined"
+        )
         func `argumentContainingSpaceIsQuoted`() {
             // Pre-fix, `"echo hello" + " " + "two words"` naively space-joined
             // to `echo hello two words`, which CommandLineToArgvW on the
@@ -61,7 +64,9 @@ extension Process.Spawn {
             // concatenated into the command line verbatim: the un-escaped
             // `"` let the child's argv parser treat the remainder as new,
             // attacker-controlled tokens — the injection half of F-002.
-            #expect(Process.Spawn._quoteWindowsCommandLineArgument("say \"hi\"") == "\"say \\\"hi\\\"\"")
+            #expect(
+                Process.Spawn._quoteWindowsCommandLineArgument("say \"hi\"") == "\"say \\\"hi\\\"\""
+            )
         }
 
         // MARK: - Backslash-run edge cases (Microsoft's documented algorithm)
@@ -74,7 +79,9 @@ extension Process.Spawn {
             #expect(Process.Spawn._quoteWindowsCommandLineArgument("a\\ b\\") == "\"a\\ b\\\\\"")
         }
 
-        @Test("A backslash run immediately before an embedded quote is doubled-plus-one, then the quote is escaped")
+        @Test(
+            "A backslash run immediately before an embedded quote is doubled-plus-one, then the quote is escaped"
+        )
         func `backslashRunBeforeEmbeddedQuoteIsDoubledPlusOne`() {
             // `a\"b` (one backslash directly preceding a literal `"`)
             // expands to two backslashes (escaping the run) + an escaped
@@ -94,7 +101,9 @@ extension Process.Spawn {
 
         // MARK: - Executable token is quoted too
 
-        @Test("The executable token itself is quoted when it contains a space, not just the arguments")
+        @Test(
+            "The executable token itself is quoted when it contains a space, not just the arguments"
+        )
         func `executableTokenIsQuotedWhenItContainsASpace`() {
             // Pre-fix, only a naive space-join was used for the whole
             // command line — `configuration.executable` was never quoted

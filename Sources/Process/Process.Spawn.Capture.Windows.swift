@@ -160,8 +160,10 @@
 
     extension Process.Spawn {
         @usableFromInline
-        internal static func _makeActions() throws(Process.Error) -> Windows.`32`.Kernel.Process.Spawn.Actions {
-            do throws(Windows.`32`.Kernel.Process.Error) {
+        internal static func _makeActions() throws(Process.Error)
+            -> Windows.`32`.Kernel.Process.Spawn.Actions
+        {
+            do throws(Process.Error.Kernel) {
                 return try Windows.`32`.Kernel.Process.Spawn.Actions()
             } catch {
                 switch error {
@@ -175,7 +177,9 @@
         }
 
         @usableFromInline
-        internal static func _makePipe() throws(Process.Error) -> Windows.`32`.Kernel.Pipe.Descriptors {
+        internal static func _makePipe() throws(Process.Error)
+            -> Windows.`32`.Kernel.Pipe.Descriptors
+        {
             do throws(Windows.`32`.Kernel.Pipe.Error) {
                 return try Windows.`32`.Kernel.Pipe.pipe()
             } catch {
@@ -195,7 +199,7 @@
             into actions: inout Windows.`32`.Kernel.Process.Spawn.Actions,
             slot: _StdioSlot
         ) throws(Process.Error) {
-            do throws(Windows.`32`.Kernel.Process.Error) {
+            do throws(Process.Error.Kernel) {
                 try actions.markHandleInheritable(descriptor)
                 switch slot {
                 case .stdout: actions.setStdout(descriptor)
@@ -258,7 +262,7 @@
             // outer binding instead of being returned through them.
             var spawnedResult: Windows.`32`.Kernel.Process.Spawn.Result?
 
-            do throws(Windows.`32`.Kernel.Process.Error) {
+            do throws(Process.Error.Kernel) {
                 // All four buffers (executable, command line, working
                 // directory, environment) are accessed from inside one
                 // nested `withUnsafe(Mutable)BufferPointer` scope stack, so
@@ -270,17 +274,28 @@
                 // `_withOptionalWideBuffer` below closes that gap the same
                 // way `executableUnits`/`commandLineUnits` already were.
                 try unsafe executableUnits.withUnsafeBufferPointer {
-                    (exePtr: UnsafeBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) in
+                    (
+                        exePtr: UnsafeBufferPointer<WCHAR>
+                    ) throws(Process.Error.Kernel)
+                    in
                     try unsafe commandLineUnits.withUnsafeMutableBufferPointer {
-                        (cmdPtr: inout UnsafeMutableBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) in
+                        (
+                            cmdPtr: inout UnsafeMutableBufferPointer<WCHAR>
+                        ) throws(Process.Error.Kernel) in
                         try _withOptionalWideBuffer(cwdUnits) {
-                            (cwdPtr: UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) in
+                            (
+                                cwdPtr: UnsafePointer<WCHAR>?
+                            ) throws(Process.Error.Kernel) in
                             try _withOptionalWideBuffer(envBlock) {
-                                (envPtr: UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) in
+                                (
+                                    envPtr: UnsafePointer<WCHAR>?
+                                ) throws(Process.Error.Kernel) in
                                 spawnedResult = try unsafe Windows.`32`.Kernel.Process.Spawn.spawn(
                                     executable: exePtr.baseAddress,
                                     commandLine: cmdPtr.baseAddress!,
-                                    environment: envPtr.map { unsafe UnsafeMutableRawPointer(mutating: $0) },
+                                    environment: envPtr.map {
+                                        unsafe UnsafeMutableRawPointer(mutating: $0)
+                                    },
                                     workingDirectory: cwdPtr,
                                     actions: actions
                                 )
@@ -339,13 +354,16 @@
         /// plain `internal` is sufficient.
         internal static func _withOptionalWideBuffer<R>(
             _ array: [WCHAR]?,
-            _ body: (UnsafePointer<WCHAR>?) throws(Windows.`32`.Kernel.Process.Error) -> R
-        ) throws(Windows.`32`.Kernel.Process.Error) -> R {
+            _ body: (UnsafePointer<WCHAR>?) throws(Process.Error.Kernel) -> R
+        ) throws(Process.Error.Kernel) -> R {
             guard let array else {
                 return try body(nil)
             }
             return try unsafe array.withUnsafeBufferPointer {
-                (buffer: UnsafeBufferPointer<WCHAR>) throws(Windows.`32`.Kernel.Process.Error) -> R in
+                (
+                    buffer: UnsafeBufferPointer<WCHAR>
+                ) throws(Process.Error.Kernel) -> R
+                in
                 try body(unsafe buffer.baseAddress)
             }
         }
@@ -447,7 +465,7 @@
         @usableFromInline
         internal static func _processErrorFromCode(
             _ code: Error_Primitives.Error.Code
-        ) -> Windows.`32`.Kernel.Process.Error {
+        ) -> Process.Error.Kernel {
             .create(code)
         }
     }
@@ -485,10 +503,13 @@ extension Process.Spawn {
     ///   backslashes (only the run is escaped, since the following `"`
     ///   is the delimiter, not part of the argument).
     @usableFromInline
-    internal static func _quoteWindowsCommandLineArgument(_ argument: Swift.String) -> Swift.String {
+    internal static func _quoteWindowsCommandLineArgument(_ argument: Swift.String) -> Swift.String
+    {
         let needsQuoting =
             argument.isEmpty
-            || argument.contains(where: { $0 == " " || $0 == "\t" || $0 == "\n" || $0 == "\u{0B}" || $0 == "\"" })
+            || argument.contains(where: {
+                $0 == " " || $0 == "\t" || $0 == "\n" || $0 == "\u{0B}" || $0 == "\""
+            })
         guard needsQuoting else {
             return argument
         }
