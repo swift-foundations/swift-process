@@ -27,7 +27,8 @@
 
         /// POSIX environment names are case-sensitive.
         @usableFromInline
-        internal static func _environmentNamesMatch(_ key: Substring, _ name: Swift.String) -> Bool {
+        internal static func _environmentNamesMatch(_ key: Substring, _ name: Swift.String) -> Bool
+        {
             key == name
         }
 
@@ -64,7 +65,9 @@
             let stats: ISO_9945.Kernel.File.Stats
             do throws(Path.String.Error<ISO_9945.Kernel.File.Stats.Error>) {
                 stats = try Path.scope(candidate) {
-                    (view: borrowing Path.Borrowed) throws(ISO_9945.Kernel.File.Stats.Error)
+                    (
+                        view: borrowing Path.Borrowed
+                    ) throws(ISO_9945.Kernel.File.Stats.Error)
                         -> ISO_9945.Kernel.File.Stats in
                     try ISO_9945.Kernel.File.Stats.get(path: view)
                 }
