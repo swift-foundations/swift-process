@@ -89,6 +89,28 @@ extension Process.Spawn.Executable {
             }
         }
 
+        @Test
+        func `directories(in:) splits on the platform separator and preserves empty entries`() {
+            #if os(Windows)
+                let list = "C:\\one;C:\\two;;C:\\three"
+                let expected: [Swift.Substring] = ["C:\\one", "C:\\two", "", "C:\\three"]
+            #else
+                let list = "/one:/two::/three"
+                let expected: [Swift.Substring] = ["/one", "/two", "", "/three"]
+            #endif
+            #expect(Process.Spawn.Executable.directories(in: list) == expected)
+        }
+
+        @Test
+        func `directories(in:) does not split on the other platform's separator`() {
+            #if os(Windows)
+                let foreign = "/one:/two"
+            #else
+                let foreign = "one;two"
+            #endif
+            #expect(Process.Spawn.Executable.directories(in: foreign).count == 1)
+        }
+
         #if os(Windows)
             @Test
             func `PATHEXT supplies the .exe suffix for a bare Windows name`() throws {
