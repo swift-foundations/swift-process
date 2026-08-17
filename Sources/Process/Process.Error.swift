@@ -50,6 +50,16 @@ extension Process {
         /// and `n+1...` are environment entries.
         case invalidPath(index: Int)
 
+        /// ``Spawn/Configuration/executable`` was a bare program name
+        /// (no path separator) and ``Spawn/Executable/resolve(_:)``
+        /// found no match on the parent's `PATH` (Windows: `PATH` +
+        /// `PATHEXT`). The payload is the name that was searched for.
+        ///
+        /// Executables given as a path (containing a separator) never
+        /// raise this; a missing path surfaces from the kernel as
+        /// ``spawn(_:)`` instead.
+        case executableNotFound(Swift.String)
+
         /// The platform spawn primitive failed with the wrapped kernel
         /// error: `posix_spawn(3)` on POSIX, `CreateProcessW` (with its
         /// `STARTUPINFOEX` / handle-list setup) on Windows.

@@ -249,8 +249,13 @@
 
             // Build the UTF-16 executable path NUL-terminated. Win32 distinguishes
             // lpApplicationName (the actual exe path) from lpCommandLine (which
-            // includes argv[0]); we pass the executable explicitly.
-            var executableUnits = Array(configuration.executable.utf16)
+            // includes argv[0]); we pass the executable explicitly. A bare
+            // program name is resolved through PATH + PATHEXT first (see
+            // `Executable`) — CreateProcessW never searches when
+            // lpApplicationName is supplied — while the command line's first
+            // token stays the configured name.
+            let resolvedExecutable = try Executable.resolve(configuration.executable)
+            var executableUnits = Array(resolvedExecutable.utf16)
             executableUnits.append(0)
 
             // `Windows.`32`.Kernel.Process.Spawn.Result` is `~Copyable` and

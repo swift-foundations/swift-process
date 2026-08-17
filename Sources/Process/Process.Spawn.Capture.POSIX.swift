@@ -302,17 +302,19 @@
             _ configuration: Configuration,
             actions: borrowing ISO_9945.Kernel.Process.Spawn.Actions
         ) throws(Process.Error) -> ISO_9945.Kernel.Process.ID {
-            let argv = [configuration.executable] + configuration.arguments
+            // Slot 0 is the resolved path (see `Executable`); slots
+            // 1... are argv proper, with argv[0] = the configured name.
+            let vector = try _spawnVector(configuration)
             let envp = _flattenEnvironment(configuration.environment)
             do throws(Path.String.Error<ISO_9945.Kernel.Process.Error>) {
-                return try unsafe Path.scope.array(argv, envp) {
+                return try unsafe Path.scope.array(vector, envp) {
                     (
-                        argvPtr: UnsafePointer<UnsafePointer<Path.Char>?>,
+                        vectorPtr: UnsafePointer<UnsafePointer<Path.Char>?>,
                         envpPtr: UnsafePointer<UnsafePointer<Path.Char>?>
                     ) throws(ISO_9945.Kernel.Process.Error) -> ISO_9945.Kernel.Process.ID in
                     try unsafe ISO_9945.Kernel.Process.Spawn.spawn(
-                        path: argvPtr[0]!,
-                        argv: argvPtr,
+                        path: vectorPtr[0]!,
+                        argv: vectorPtr + 1,
                         envp: envpPtr,
                         actions: actions
                     )
@@ -320,7 +322,7 @@
             } catch {
                 switch error {
                 case .conversion(.interiorNUL(let index)):
-                    throw .invalidPath(index: index)
+                    throw .invalidPath(index: _spawnVectorIndex(index))
 
                 case .body(let posixError):
                     throw .spawn(posixError)
