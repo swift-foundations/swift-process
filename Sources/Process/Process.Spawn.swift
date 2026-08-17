@@ -45,6 +45,13 @@ extension Process {
     ///   `CreateProcessW` with `STARTUPINFOEX` and
     ///   `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` for precise child-handle
     ///   inheritance discipline.
+    ///
+    /// On both platforms ``Configuration/executable`` is first passed
+    /// through ``Executable/resolve(_:)``: a bare program name is
+    /// searched on the parent's `PATH` (Windows: `PATH` + `PATHEXT`),
+    /// a value containing a separator is used as-is. Neither
+    /// `posix_spawn` nor `CreateProcessW` (with `lpApplicationName`)
+    /// searches on its own.
     public enum Spawn: Sendable {}
 }
 
@@ -70,26 +77,28 @@ extension Process.Spawn {
         try _checkSpawnSupports(configuration)
 
         #if !os(Windows)
-            let argv = [configuration.executable] + configuration.arguments
+            // Slot 0 is the resolved path (see `Executable`); slots
+            // 1... are argv proper, with argv[0] = the configured name.
+            let vector = try _spawnVector(configuration)
             let envp = _flattenEnvironment(configuration.environment)
 
             let pid: ISO_9945.Kernel.Process.ID
             do throws(Path.String.Error<ISO_9945.Kernel.Process.Error>) {
-                pid = try unsafe Path.scope.array(argv, envp) {
+                pid = try unsafe Path.scope.array(vector, envp) {
                     (
-                        argvPtr: UnsafePointer<UnsafePointer<Path.Char>?>,
+                        vectorPtr: UnsafePointer<UnsafePointer<Path.Char>?>,
                         envpPtr: UnsafePointer<UnsafePointer<Path.Char>?>
                     ) throws(ISO_9945.Kernel.Process.Error) -> ISO_9945.Kernel.Process.ID in
                     try unsafe POSIX.Kernel.Process.Spawn.spawn(
-                        path: unsafe argvPtr[0]!,
-                        argv: argvPtr,
+                        path: unsafe vectorPtr[0]!,
+                        argv: unsafe vectorPtr + 1,
                         envp: envpPtr
                     )
                 }
             } catch {
                 switch error {
                 case .conversion(.interiorNUL(let index)):
-                    throw .invalidPath(index: index)
+                    throw .invalidPath(index: _spawnVectorIndex(index))
 
                 case .body(let posixError):
                     throw .spawn(posixError)
@@ -223,6 +232,33 @@ extension Process.Spawn {
             throw .streamPolicyUnsupported
         }
     }
+
+    #if !os(Windows)
+        /// Builds the POSIX spawn vector: `[resolvedPath, argv0, args...]`.
+        ///
+        /// Slot 0 is the path handed to `posix_spawn(3)` after
+        /// ``Executable/resolve(_:)``; slots `1...` are the child's
+        /// `argv`, with `argv[0]` = ``Configuration/executable`` as
+        /// configured (the `posix_spawnp(3)` convention). Packing both
+        /// into one vector lets a single ``Path/scope`` call own every
+        /// C string for the duration of the spawn.
+        @usableFromInline
+        internal static func _spawnVector(
+            _ configuration: Configuration
+        ) throws(Process.Error) -> [Swift.String] {
+            let resolved = try Executable.resolve(configuration.executable)
+            return [resolved, configuration.executable] + configuration.arguments
+        }
+
+        /// Maps a conversion-failure index in the ``_spawnVector(_:)``
+        /// layout back onto ``Process/Error/invalidPath(index:)``'s
+        /// documented numbering (`0` = executable, `1...` = arguments,
+        /// then environment).
+        @usableFromInline
+        internal static func _spawnVectorIndex(_ index: Int) -> Int {
+            index == 0 ? 0 : index - 1
+        }
+    #endif
 
     /// Flattens an environment dictionary to `KEY=VALUE` strings,
     /// preserving deterministic order for stable spawn behavior.

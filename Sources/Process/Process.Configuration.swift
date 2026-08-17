@@ -68,7 +68,13 @@ extension Process.Spawn {
     /// On Windows the field is currently a no-op; deadline enforcement
     /// on the Windows path is reserved for a future revision.
     public struct Configuration: Sendable {
-        /// Path to the executable.
+        /// Path to the executable, or a bare program name.
+        ///
+        /// A value containing a path separator is used as-is; a bare
+        /// name (`"git"`, `"swift"`) is looked up on the parent's `PATH`
+        /// (Windows: `PATH` + `PATHEXT`) per
+        /// ``Process/Spawn/Executable``. Either way the child's
+        /// `argv[0]` is this value verbatim.
         public let executable: Swift.String
 
         /// Arguments to pass to the child (excluding `argv[0]`).
