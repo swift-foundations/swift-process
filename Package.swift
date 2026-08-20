@@ -1,4 +1,4 @@
-// swift-tools-version: 6.3.3
+// swift-tools-version: 6.4
 
 // ===----------------------------------------------------------------------===//
 //
@@ -16,22 +16,25 @@ import PackageDescription
 let package = Package(
     name: "swift-process",
     platforms: [
-        .macOS("27"),
-        .iOS("27"),
-        .tvOS("27"),
-        .watchOS("27"),
-        .visionOS("27")
+        .macOS(.v27),
+        .iOS(.v27),
+        .tvOS(.v27),
+        .watchOS(.v27),
+        .visionOS(.v27),
     ],
     products: [
         .library(name: "Process", targets: ["Process"])
     ],
     dependencies: [
-        .package(url: "https://github.com/swift-primitives/swift-path-primitives.git", branch: "main"),
+        .package(
+            url: "https://github.com/swift-primitives/swift-path-primitives.git",
+            branch: "main"
+        ),
         .package(url: "https://github.com/swift-foundations/swift-kernel.git", branch: "main"),
         .package(url: "https://github.com/swift-foundations/swift-posix.git", branch: "main"),
         .package(url: "https://github.com/swift-foundations/swift-windows.git", branch: "main"),
         .package(url: "https://github.com/swift-foundations/swift-strings.git", branch: "main"),
-        .package(url: "https://github.com/swift-iso/swift-iso-9945.git", branch: "main")
+        .package(url: "https://github.com/swift-iso/swift-iso-9945.git", branch: "main"),
     ],
     targets: [
         .target(
@@ -62,7 +65,7 @@ let package = Package(
                     package: "swift-windows",
                     condition: .when(platforms: [.windows])
                 ),
-                .product(name: "Strings", package: "swift-strings")
+                .product(name: "Strings", package: "swift-strings"),
             ],
             path: "Sources/Process"
         ),
@@ -71,7 +74,7 @@ let package = Package(
             dependencies: [
                 "Process"
             ]
-        )
+        ),
     ],
     swiftLanguageModes: [.v6]
 )
