@@ -1,14 +1,3 @@
-// ===----------------------------------------------------------------------===//
-//
-// This source file is part of the swift-process open source project
-//
-// Copyright (c) 2026 Coen ten Thije Boonkkamp and the swift-process project authors
-// Licensed under Apache License v2.0
-//
-// See LICENSE for license information
-//
-// ===----------------------------------------------------------------------===//
-
 #if os(Windows)
 
     import Testing
@@ -17,8 +6,6 @@
     extension Process.Spawn {
         @Suite("Process pipe capture + workingDirectory (Windows)")
         struct Test {
-
-            // MARK: - stdout capture
 
             @Test("cmd.exe /C 'echo hello' → captured stdout is 'hello\\r\\n'")
             func `captureEchoStdout`() throws {
@@ -37,8 +24,6 @@
                 #expect(text == "hello\r\n")
             }
 
-            // MARK: - stderr capture
-
             @Test("cmd.exe /C 'echo err 1>&2' → captured stderr is 'err \\r\\n'")
             func `captureStderrFromCmd`() throws {
                 let output = try Process.Spawn.run(
@@ -53,14 +38,9 @@
 
                 let bytes = try #require(output.stderr)
                 let text = Swift.String(decoding: bytes, as: UTF8.self)
-                // `echo err 1>&2` echoes everything between `echo ` and the
-                // redirection operator, so cmd.exe emits `err` followed by the
-                // space that precedes `1>&2` — the trailing space below is
-                // cmd.exe's documented behaviour, not a stray character.
+
                 #expect(text == "err \r\n")
             }
-
-            // MARK: - both captures
 
             @Test(
                 .disabled(
@@ -90,8 +70,7 @@
                         stderr: .pipe
                     )
                 )
-                // PowerShell Write-Error sets exit to non-zero by default; we just
-                // verify both streams were captured.
+
                 let outBytes = try #require(output.stdout)
                 let errBytes = try #require(output.stderr)
                 let outText = Swift.String(decoding: outBytes, as: UTF8.self)
@@ -99,8 +78,6 @@
                 #expect(outText.contains("out"))
                 #expect(errText.contains("err"))
             }
-
-            // MARK: - workingDirectory
 
             @Test(
                 "cmd.exe /C 'echo %CD%' with workingDirectory: 'C:\\Windows' → cwd is C:\\Windows"
@@ -119,11 +96,9 @@
                 let bytes = try #require(output.stdout)
                 let text = Swift.String(decoding: bytes, as: UTF8.self)
                     .trimmingTrailingNewlinesWin
-                // CD output ends with \r\n on Windows; trim and case-insensitive match.
+
                 #expect(text.lowercased() == "c:\\windows", "got: \(text)")
             }
-
-            // MARK: - error paths
 
             @Test
             func `stdin: .pipe is rejected with streamPolicyUnsupported (v2)`() throws {
@@ -176,15 +151,8 @@
         }
     }
 
-    // MARK: - String trimming helper
-
     extension Swift.String {
-        /// Drops trailing line terminators, including the Windows CRLF pair.
-        ///
-        /// `"\r\n"` is one `Character` — an extended grapheme cluster — so a
-        /// loop testing `last == "\n" || last == "\r"` matches neither half of
-        /// a CRLF terminator and silently trims nothing. `Character.isNewline`
-        /// is true for the CRLF cluster as well as for a lone CR or LF.
+
         fileprivate var trimmingTrailingNewlinesWin: Swift.String {
             var s = self
             while let last = s.last, last.isNewline {
@@ -194,4 +162,4 @@
         }
     }
 
-#endif  // os(Windows)
+#endif

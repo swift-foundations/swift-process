@@ -1,14 +1,3 @@
-// ===----------------------------------------------------------------------===//
-//
-// This source file is part of the swift-process open source project
-//
-// Copyright (c) 2026 Coen ten Thije Boonkkamp and the swift-process project authors
-// Licensed under Apache License v2.0
-//
-// See LICENSE for license information
-//
-// ===----------------------------------------------------------------------===//
-
 #if !os(Windows)
 
     import Testing
@@ -17,8 +6,6 @@
     extension Process.Spawn {
         @Suite("Process pipe capture + workingDirectory")
         struct Test {
-
-            // MARK: - stdout capture
 
             @Test("echo hello → captured stdout is 'hello\\n'")
             func `captureEchoStdout`() throws {
@@ -37,8 +24,6 @@
                 #expect(text == "hello\n")
             }
 
-            // MARK: - stderr capture
-
             @Test("sh -c 'echo err >&2' → captured stderr is 'err\\n'")
             func `captureStderrFromSubshell`() throws {
                 let output = try Process.Spawn.run(
@@ -55,8 +40,6 @@
                 let text = Swift.String(decoding: bytes, as: UTF8.self)
                 #expect(text == "err\n")
             }
-
-            // MARK: - both captures
 
             @Test
             func `sh -c '… stdout … stderr …' → both captured`() throws {
@@ -76,8 +59,6 @@
                 #expect(Swift.String(decoding: errBytes, as: UTF8.self) == "err\n")
             }
 
-            // MARK: - workingDirectory
-
             @Test
             func `pwd with workingDirectory: '/tmp' → child cwd is /tmp`() throws {
                 let output = try Process.Spawn.run(
@@ -92,11 +73,9 @@
                 let bytes = try #require(output.stdout)
                 let text = Swift.String(decoding: bytes, as: UTF8.self)
                     .trimmingTrailingNewlines
-                // macOS resolves /tmp to /private/tmp; both forms are accepted.
+
                 #expect(text == "/tmp" || text == "/private/tmp", "got: \(text)")
             }
-
-            // MARK: - error paths
 
             @Test
             func `stdin: .pipe is rejected with streamPolicyUnsupported (v2)`() throws {
@@ -146,8 +125,6 @@
         }
     }
 
-    // MARK: - String trimming helper
-
     extension Swift.String {
         fileprivate var trimmingTrailingNewlines: Swift.String {
             var s = self
@@ -158,4 +135,4 @@
         }
     }
 
-#endif  // !os(Windows)
+#endif

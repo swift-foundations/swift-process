@@ -1,25 +1,12 @@
-// ===----------------------------------------------------------------------===//
-//
-// This source file is part of the swift-process open source project
-//
-// Copyright (c) 2026 Coen ten Thije Boonkkamp and the swift-process project authors
-// Licensed under Apache License v2.0
-//
-// See LICENSE for license information
-//
-// ===----------------------------------------------------------------------===//
-
 import Testing
+
 @testable import Process
 
 extension Process.Spawn.Executable {
-    /// Cross-platform executable resolution: bare name → `PATH` search;
-    /// path with separator → as-is. Every test here runs on POSIX and
-    /// Windows; only the program used differs per platform.
+
     @Suite
     struct Test {
-        /// A program guaranteed present on every runner: the platform's
-        /// command interpreter.
+
         #if os(Windows)
             static let interpreter = "cmd"
             static let interpreterPath = "C:\\Windows\\System32\\cmd.exe"

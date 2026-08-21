@@ -1,14 +1,3 @@
-// ===----------------------------------------------------------------------===//
-//
-// This source file is part of the swift-process open source project
-//
-// Copyright (c) 2026 Coen ten Thije Boonkkamp and the swift-process project authors
-// Licensed under Apache License v2.0
-//
-// See LICENSE for license information
-//
-// ===----------------------------------------------------------------------===//
-
 #if !os(Windows)
 
     internal import Path_Primitives
@@ -25,38 +14,7 @@
     #endif
 
     extension Process.Spawn {
-        /// Slow path: configurations with ``Process/Stream/pipe`` streams,
-        /// a non-`nil`
-        /// ``Process/Spawn/Configuration/workingDirectory``, or a non-`nil`
-        /// ``Process/Spawn/Configuration/timeout``.
-        ///
-        /// Steps:
-        /// 1. Build a ``ISO_9945/Kernel/Process/Spawn/Actions`` builder.
-        /// 2. For each `.pipe` stream, create an anonymous pipe and add
-        ///    a `dup2` action mapping the appropriate end into the
-        ///    child's slot.
-        /// 3. If `workingDirectory` is set, add an `addchdir` action.
-        /// 4. Spawn the child with the actions.
-        /// 5. Close the parent's copy of the child-side ends (so the
-        ///    child sees EOF when it exits) and retain the parent-side
-        ///    ends for draining.
-        /// 6. If a timeout is configured, arm a watchdog (self-pipe
-        ///    coordinated thread) that sends `SIGKILL` to the child when
-        ///    the deadline elapses.
-        /// 7. Drain configured pipes — concurrently via `poll(2)` for the
-        ///    both-pipes case (v3) so neither pipe's kernel buffer
-        ///    (typically 64 KiB) can wedge the other; sequentially for
-        ///    single-pipe configurations (single-pipe ordering cannot
-        ///    deadlock).
-        /// 8. `wait` for the child, disarm the watchdog, and bundle into
-        ///    ``Process/Output``.
-        ///
-        /// Implementation note: each `.pipe` slot has its own linear
-        /// branch to keep the `~Copyable` pipe descriptors out of an
-        /// `Optional`. `Optional<~Copyable>` cannot be borrowed across
-        /// the dup2-setup and post-spawn-close phases — a single
-        /// consume per Optional is the language constraint, and pipes
-        /// must outlive both phases.
+
         @usableFromInline
         internal static func _runWithCapture(
             _ configuration: Configuration
@@ -81,12 +39,8 @@
         }
     }
 
-    // MARK: - Per-configuration branches
-
     extension Process.Spawn {
-        /// No pipes — only `workingDirectory` and / or `timeout` is
-        /// non-default. Build an Actions object holding only the chdir
-        /// action and spawn.
+
         @usableFromInline
         internal static func _runWithoutPipes(
             _ configuration: Configuration
@@ -188,18 +142,6 @@
             return Process.Output(status: status, stdout: nil, stderr: captured)
         }
 
-        /// Both stdout and stderr captured concurrently via `poll(2)`.
-        ///
-        /// Concurrent drain (v3) replaces v2's sequential drain, which
-        /// would deadlock when the child wrote more than the kernel's
-        /// pipe buffer (typically 64 KiB) to stderr while the parent was
-        /// still draining stdout. With concurrent drain, neither pipe can
-        /// wedge the other.
-        ///
-        /// Order-of-operations preservation: both reads complete (EOF)
-        /// before `handle.wait()`, so the child's terminal state is
-        /// observable only after all bytes are captured. Only the inner
-        /// drain ordering changes (parallel instead of sequential).
         @usableFromInline
         internal static func _runWithBothPipes(
             _ configuration: Configuration
@@ -252,8 +194,6 @@
         }
     }
 
-    // MARK: - Helpers
-
     extension Process.Spawn {
         @usableFromInline
         internal static func _makeActions() throws(Process.Error)
@@ -302,8 +242,7 @@
             _ configuration: Configuration,
             actions: borrowing ISO_9945.Kernel.Process.Spawn.Actions
         ) throws(Process.Error) -> ISO_9945.Kernel.Process.ID {
-            // Slot 0 is the resolved path (see `Executable`); slots
-            // 1... are argv proper, with argv[0] = the configured name.
+
             let vector = try _spawnVector(configuration)
             let envp = _flattenEnvironment(configuration.environment)
             do throws(Path.String.Error<ISO_9945.Kernel.Process.Error>) {
@@ -330,10 +269,6 @@
             }
         }
 
-        /// Extracts the underlying POSIX code from a
-        /// ``ISO_9945/Kernel/Close/Error``. The type's two cases both
-        /// carry a code; this helper centralises the destructure for
-        /// call sites that route through ``Process/Error/capture(_:)``.
         @usableFromInline
         internal static func _closeErrorCode(
             _ error: ISO_9945.Kernel.Close.Error
@@ -344,9 +279,6 @@
             }
         }
 
-        /// Closes the write end of `pipe` (parent's copy after the child
-        /// has dup'd its own) and returns the read end. Errors flow back
-        /// as ``Process/Error/capture(_:)``.
         @usableFromInline
         internal static func _closeWriteEnd(
             _ pipe: consuming ISO_9945.Kernel.Pipe.Descriptors
@@ -358,8 +290,6 @@
             }
         }
 
-        /// Drains `descriptor` to EOF; errors flow back as
-        /// ``Process/Error/capture(_:)``.
         @usableFromInline
         internal static func _drainBytes(
             _ descriptor: consuming ISO_9945.Kernel.Descriptor
@@ -371,9 +301,6 @@
             }
         }
 
-        /// Reads `descriptor` to EOF, returning all bytes read. Consumes
-        /// the descriptor (its `deinit` will close the fd when the read
-        /// returns or throws).
         @usableFromInline
         internal static func _drain(
             _ descriptor: consuming ISO_9945.Kernel.Descriptor
@@ -395,25 +322,8 @@
         }
     }
 
-    // MARK: - Concurrent drain (v3)
-
     extension Process.Spawn {
-        /// Drains both pipes concurrently via `poll(2)`.
-        ///
-        /// `poll(2)` reports readiness on either pipe as it occurs; we
-        /// `read(2)` whichever pipe is ready and append into its buffer.
-        /// Either pipe reaching EOF (`read` returns `0`) marks that pipe
-        /// done; remaining traffic on the other pipe continues to be
-        /// drained until it too reaches EOF.
-        ///
-        /// This replaces v2's sequential drain, which deadlocked when the
-        /// child wrote more than the kernel's pipe buffer (typically
-        /// 64 KiB) to stderr while the parent was still draining stdout —
-        /// the child blocked on the stderr write, which prevented stdout
-        /// from advancing.
-        ///
-        /// Consumes both descriptors; their `deinit`s close the parent
-        /// copies once this function returns or throws.
+
         @usableFromInline
         internal static func _drainConcurrently(
             stdout stdoutDescriptor: consuming ISO_9945.Kernel.Descriptor,
@@ -426,10 +336,6 @@
             var stdoutDone = false
             var stderrDone = false
 
-            // Index 0 = stdout, index 1 = stderr (when both are still open).
-            // After one closes, the closed slot's pollfd is masked out by
-            // setting its descriptor field to `-1` (the canonical "ignore"
-            // value the kernel honors regardless of `events`).
             while !(stdoutDone && stderrDone) {
                 var entries: [ISO_9945.Kernel.Poll.Entry] = []
                 entries.reserveCapacity(2)
@@ -506,37 +412,16 @@
         }
     }
 
-    // MARK: - Watchdog (v3 timeout)
-
     extension Process.Spawn {
-        /// In-flight watchdog state. Holding a non-empty value means a
-        /// watchdog thread is running; `_disarmWatchdog` is a no-op for
-        /// the empty (no-timeout) state.
-        ///
-        /// The two pipe ends are stored as raw `Int32` fds rather than
-        /// typed `Descriptor`s because the watchdog thread needs to
-        /// `read(2)` from one fd while the main thread writes to the
-        /// other and ultimately joins. `~Copyable` `Descriptor` cannot
-        /// cross an `@escaping @Sendable` closure boundary, and the
-        /// language has no public "release-without-close" API for
-        /// suppressing a typed wrapper's deinit. Raw fds wrapped at
-        /// open / close boundaries inside this file avoid both pitfalls
-        /// while keeping platform reach narrow (a single `import Darwin /
-        /// Glibc / Musl` at the top of this file).
+
         @usableFromInline
         internal struct Watchdog: ~Copyable {
             @usableFromInline
             internal var thread: ISO_9945.Kernel.Thread.Handle?
 
-            /// Parent-side write end of the self-pipe. `-1` means "armed
-            /// but already disarmed" or "never armed".
             @usableFromInline
             internal var shutdownWriteFd: Int32
 
-            /// Parent-side read end of the self-pipe. The watchdog thread
-            /// also reads from this fd via the same int (shared, not
-            /// duplicated). Closed only after `thread.join()` so there is
-            /// no race with the watchdog's read.
             @usableFromInline
             internal var shutdownReadFd: Int32
 
@@ -548,21 +433,6 @@
             }
         }
 
-        /// Arms a deadline-driven watchdog when `timeout` is non-`nil`.
-        ///
-        /// The watchdog is a separate OS thread that polls a self-pipe
-        /// with the timeout as its deadline. Two outcomes:
-        ///
-        ///   - Deadline elapses first → watchdog `kill(pid, SIGKILL)`s the
-        ///     child. The child's pipes close (parent sees EOF on drain)
-        ///     and `wait` returns ``Process/Status/signaled(signal:)`` with
-        ///     `SIGKILL`.
-        ///   - `_disarmWatchdog` writes a byte to the self-pipe first →
-        ///     watchdog wakes, observes the shutdown signal via `POLLIN`,
-        ///     and exits without killing.
-        ///
-        /// Returns an empty `Watchdog` (no thread, fds == -1) when
-        /// `timeout == nil`, in which case `_disarmWatchdog` is a no-op.
         @usableFromInline
         internal static func _armWatchdog(
             pid: ISO_9945.Kernel.Process.ID,
@@ -572,10 +442,6 @@
                 return Watchdog()
             }
 
-            // Self-pipe via raw `pipe(2)` — the typed L2 wrapper is not a
-            // fit because we need to share the read fd with a separate
-            // thread without engaging the `~Copyable` `Descriptor` type
-            // (which has no public "release-without-close" API).
             var fds: (Int32, Int32) = (-1, -1)
             let pipeResult: Int32 = withUnsafeMutablePointer(to: &fds) { tuple -> Int32 in
                 unsafe tuple.withMemoryRebound(to: Int32.self, capacity: 2) { fdPtr -> Int32 in
@@ -583,7 +449,7 @@
                 }
             }
             guard pipeResult == 0 else {
-                throw .capture(.posix( errno))
+                throw .capture(.posix(errno))
             }
 
             let readFd = fds.0
@@ -601,7 +467,7 @@
                     )
                 }
             } catch {
-                // Thread creation failed: close both ends.
+
                 _closeRawFd(readFd)
                 _closeRawFd(writeFd)
                 throw .capture(_threadErrorCode(error))
@@ -614,15 +480,9 @@
             return watchdog
         }
 
-        /// Disarms the watchdog (if armed): writes one byte to the
-        /// self-pipe to wake it, then `pthread_join`s. After this returns
-        /// the watchdog thread has exited and its captured PID is no
-        /// longer touched.
         @usableFromInline
         internal static func _disarmWatchdog(_ watchdog: consuming Watchdog) {
-            // Snapshot the fds before consuming; the optional `thread`
-            // partial-reinitialization restriction means we can only
-            // touch `watchdog.thread` once.
+
             let writeFd = watchdog.shutdownWriteFd
             let readFd = watchdog.shutdownReadFd
             let threadOpt: ISO_9945.Kernel.Thread.Handle? = consume watchdog.thread
@@ -632,56 +492,33 @@
             }
 
             if writeFd >= 0 {
-                // Write one byte to wake the watchdog. Failure is
-                // non-fatal — closing the write end below also raises
-                // POLLHUP on the read end, which the watchdog observes.
+
                 _writeWakeByte(writeFd)
-                // Close the write end so the watchdog sees POLLHUP if
-                // the byte was lost (defensive).
+
                 _closeRawFd(writeFd)
             }
 
-            // Block until the watchdog has exited. The watchdog never
-            // touches `pid` — and never reads from `shutdownReadFd` —
-            // after this point. A `join` failure is non-fatal here — the
-            // watchdog thread has still run to completion by the time
-            // `pthread_join` returns any error other than success; there
-            // is nothing actionable to do with the failure at teardown.
             do throws(ISO_9945.Kernel.Thread.Error) {
                 try thread.join()
             } catch {
-                // Non-fatal — see comment above.
+
             }
 
-            // Now safe to close the read end.
             if readFd >= 0 {
                 _closeRawFd(readFd)
             }
         }
 
-        /// Body of the watchdog thread.
-        ///
-        /// Polls `shutdownReadFd` (shared with main; neither side closes
-        /// it before `pthread_join`) with `timeoutMilliseconds` as the
-        /// deadline. Sends `SIGKILL` to `pid` if the deadline elapses
-        /// before any wakeup.
-        ///
-        /// Plain free function (not method) so it composes with
-        /// `@Sendable` closure capture without dragging `self` references.
         @usableFromInline
         internal static func _watchdogBody(
             shutdownReadFd: Int32,
             pid: Int32,
             timeoutMilliseconds: Int32
         ) {
-            // Raw `poll(2)` with a single pollfd. We don't go through the
-            // L2 typed wrapper here because that wrapper takes
-            // `[Poll.Entry]`, and Poll.Entry's only public init takes a
-            // `borrowing Descriptor` — same `~Copyable` snag as the pipe
-            // construction. Direct platform call is the cleanest path.
+
             var pollfdEntry = pollfd(fd: shutdownReadFd, events: Int16(POLLIN), revents: 0)
             let result: Int32 = withUnsafeMutablePointer(to: &pollfdEntry) { ptr -> Int32 in
-                // Retry on EINTR — same policy POSIX.Kernel.Poll.poll uses.
+
                 while true {
                     let r = unsafe poll(ptr, 1, timeoutMilliseconds)
                     if r >= 0 { return r }
@@ -690,25 +527,19 @@
             }
 
             if result == 0 {
-                // Deadline fired — kill the child. ESRCH (race with
-                // natural termination) and other errors are benign; the
-                // main thread will reap whatever status `wait(2)` returns.
+
                 do throws(ISO_9945.Kernel.Process.Error) {
                     try POSIX.Kernel.Process.Kill.kill(
                         ISO_9945.Kernel.Process.ID(rawValue: pid),
                         .kill
                     )
                 } catch {
-                    // No-op.
+
                 }
             }
-            // Otherwise: shutdown signal arrived first (or poll error),
-            // exit without kill.
+
         }
 
-        /// Best-effort single-byte write to wake the watchdog. Failure is
-        /// non-fatal — the subsequent close of the write fd also wakes
-        /// the watchdog via POLLHUP.
         @usableFromInline
         internal static func _writeWakeByte(_ fd: Int32) {
             var byte: UInt8 = 0
@@ -717,17 +548,11 @@
             }
         }
 
-        /// Closes a raw fd, ignoring failure. Used only for self-pipe
-        /// teardown where the fd is owned by this file's bookkeeping.
         @usableFromInline
         internal static func _closeRawFd(_ fd: Int32) {
             _ = close(fd)
         }
 
-        /// Extracts the `Error_Primitives.Error.Code` from a
-        /// ``ISO_9945/Kernel/Thread/Error``. All five cases carry a code;
-        /// this helper centralises the destructure for call sites that
-        /// route through ``Process/Error/capture(_:)``.
         @usableFromInline
         internal static func _threadErrorCode(
             _ error: ISO_9945.Kernel.Thread.Error
@@ -741,22 +566,13 @@
             }
         }
 
-        /// Converts a `Duration` to the millisecond timeout that `poll(2)`
-        /// expects.
-        ///
-        /// Negative-or-zero durations clamp to `0` (poll-now). Durations
-        /// exceeding `Int32.max` ms (≈ 24.8 days) clamp to `Int32.max`.
-        /// Sub-millisecond durations round UP so a non-zero `Duration` is
-        /// never reported as `0` (which would mean "non-blocking poll" and
-        /// fire the kill immediately).
         @usableFromInline
         internal static func _durationToPollMilliseconds(_ duration: Duration) -> Int32 {
             let components = duration.components
             let attosecondsPerMs: Int64 = 1_000_000_000_000_000
             let secondsPart = components.seconds
             let attosPart = components.attoseconds
-            // Round attoseconds up to the next millisecond so any non-zero
-            // sub-ms duration is treated as "wait at least 1 ms".
+
             let msFromAttos = (attosPart + attosecondsPerMs - 1) / attosecondsPerMs
             let secondsMs = secondsPart.multipliedReportingOverflow(by: 1000)
             if secondsMs.overflow { return Int32.max }
@@ -768,4 +584,4 @@
         }
     }
 
-#endif  // !os(Windows)
+#endif

@@ -1,27 +1,8 @@
-// ===----------------------------------------------------------------------===//
-//
-// This source file is part of the swift-process open source project
-//
-// Copyright (c) 2026 Coen ten Thije Boonkkamp and the swift-process project authors
-// Licensed under Apache License v2.0
-//
-// See LICENSE for license information
-//
-// ===----------------------------------------------------------------------===//
-
 #if !os(Windows)
 
     import Testing
     @testable import Process
 
-    // MARK: - Process spawn smoke tests
-    //
-    // Merged into ``Process/Spawn/Test`` per [SWIFT-TEST-002]: the tested
-    // type (`Process.Spawn`) already carries a `Test` suite (declared in
-    // Process.Spawn.Capture.Tests.swift) and this suite's name has no
-    // leftover distinguishing token once `ProcessSpawn` is stripped, so
-    // these tests are merged in as additional members of that suite via
-    // extension rather than a nested sub-suite.
     extension Process.Spawn.Test {
         @Test
         func `Spawning /usr/bin/true returns exit code 0`() throws {
@@ -73,8 +54,7 @@
                 )
                 Issue.record("expected throw, got success")
             } catch {
-                // We don't pin the exact POSIX errno (ENOENT vs EACCES vs platform
-                // variation); we just assert this surfaces as a `.spawn` failure.
+
                 switch error {
                 case .spawn: break
                 default: Issue.record("unexpected error: \(error)")
@@ -83,4 +63,4 @@
         }
     }
 
-#endif  // !os(Windows)
+#endif

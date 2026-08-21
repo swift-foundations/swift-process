@@ -1,14 +1,3 @@
-// ===----------------------------------------------------------------------===//
-//
-// This source file is part of the swift-process open source project
-//
-// Copyright (c) 2026 Coen ten Thije Boonkkamp and the swift-process project authors
-// Licensed under Apache License v2.0
-//
-// See LICENSE for license information
-//
-// ===----------------------------------------------------------------------===//
-
 #if os(Windows)
 
     import Testing
@@ -63,8 +52,7 @@
                     )
                     Issue.record("expected throw, got success")
                 } catch {
-                    // We don't pin the exact Win32 error code; we just assert this
-                    // surfaces as a `.spawn` failure.
+
                     switch error {
                     case .spawn: break
                     default: Issue.record("unexpected error: \(error)")
@@ -74,4 +62,4 @@
         }
     }
 
-#endif  // os(Windows)
+#endif

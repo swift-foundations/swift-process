@@ -1,16 +1,5 @@
 // swift-tools-version: 6.4
 
-// ===----------------------------------------------------------------------===//
-//
-// This source file is part of the swift-process open source project
-//
-// Copyright (c) 2026 Coen ten Thije Boonkkamp and the swift-process project authors
-// Licensed under Apache License v2.0
-//
-// See LICENSE for license information
-//
-// ===----------------------------------------------------------------------===//
-
 import PackageDescription
 
 let package = Package(
@@ -47,9 +36,7 @@ let package = Package(
                     package: "swift-posix",
                     condition: .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS, .linux])
                 ),
-                // Direct (POSIX-only) for the @_spi(Syscall) Poll.Entry.descriptor
-                // accessor used by the v3 concurrent drain to mask out
-                // closed slots via pollfd.fd = -1.
+
                 .product(
                     name: "ISO 9945 Kernel Poll",
                     package: "swift-iso-9945",

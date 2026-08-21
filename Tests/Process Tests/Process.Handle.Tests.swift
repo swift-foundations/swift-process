@@ -1,26 +1,4 @@
-// ===----------------------------------------------------------------------===//
-//
-// This source file is part of the swift-process open source project
-//
-// Copyright (c) 2026 Coen ten Thije Boonkkamp and the swift-process project authors
-// Licensed under Apache License v2.0
-//
-// See LICENSE for license information
-//
-// ===----------------------------------------------------------------------===//
-
 #if os(Windows)
-
-    // F-001 regression coverage. Pre-fix, `Process.Handle.init(processInfo:)`
-    // snapshotted the raw HANDLE bit patterns and then let the spawn
-    // result's `~Copyable` `Descriptor` values drop immediately — which
-    // calls `CloseHandle` on both the process and thread HANDLE right
-    // there, before `wait()` is ever invoked. `wait()` then called
-    // `WaitForSingleObject` / `GetExitCodeProcess` / a second `CloseHandle`
-    // on a HANDLE value that was already closed (and potentially already
-    // reassigned by the kernel to something else entirely). This is not a
-    // rare race: it happens on every single Windows spawn, so any spawn
-    // that reaches `wait()` should already have surfaced it deterministically.
 
     import Testing
     @testable import Process
@@ -58,4 +36,4 @@
         }
     }
 
-#endif  // os(Windows)
+#endif

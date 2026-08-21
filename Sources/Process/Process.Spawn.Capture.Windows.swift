@@ -1,14 +1,3 @@
-// ===----------------------------------------------------------------------===//
-//
-// This source file is part of the swift-process open source project
-//
-// Copyright (c) 2026 Coen ten Thije Boonkkamp and the swift-process project authors
-// Licensed under Apache License v2.0
-//
-// See LICENSE for license information
-//
-// ===----------------------------------------------------------------------===//
-
 #if os(Windows)
 
     internal import Windows_Kernel_File
@@ -16,29 +5,7 @@
     internal import WinSDK
 
     extension Process.Spawn {
-        /// Slow path: configurations with ``Process/Stream/pipe`` streams
-        /// or a non-`nil`
-        /// ``Process/Spawn/Configuration/workingDirectory``.
-        ///
-        /// Steps:
-        /// 1. Build a ``Windows/32/Kernel/Process/Spawn/Actions`` builder.
-        /// 2. For each `.pipe` stream, create an anonymous pipe via
-        ///    `CreatePipe`, set the parent-side handle non-inheritable, and
-        ///    mark the child-side handle inheritable + add it to the
-        ///    `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` via the Actions builder.
-        /// 3. If `workingDirectory` is set, pass it as `lpCurrentDirectory`
-        ///    to `CreateProcessW` (no Actions step is needed; Win32 takes a
-        ///    direct parameter).
-        /// 4. Spawn the child with the actions.
-        /// 5. Close the parent's copy of the child-side ends (so the
-        ///    child sees EOF when it exits) and retain the parent-side
-        ///    ends for draining.
-        /// 6. Drain stdout, then stderr, into `[UInt8]` buffers.
-        /// 7. Wait for the child and bundle into ``Process/Output``.
-        ///
-        /// Mirrors the POSIX branch's per-configuration linear flow so the
-        /// `~Copyable` pipe descriptors don't have to flow through an
-        /// `Optional` (single-consume constraint).
+
         @usableFromInline
         internal static func _runWithCapture(
             _ configuration: Configuration
@@ -63,12 +30,8 @@
         }
     }
 
-    // MARK: - Per-configuration branches
-
     extension Process.Spawn {
-        /// No pipes — only `workingDirectory` is non-default. Build an
-        /// Actions object holding no handles and spawn with the
-        /// `lpCurrentDirectory` parameter set.
+
         @usableFromInline
         internal static func _runWithoutPipes(
             _ configuration: Configuration
@@ -129,12 +92,6 @@
             let stdoutRead = try _closeWriteEnd(stdoutPipe)
             let stderrRead = try _closeWriteEnd(stderrPipe)
 
-            // Drain stdout then stderr. See `run(_:)`'s doc-comment for the
-            // pipe-buffer limitation — note that Windows anonymous pipes default
-            // to ~4 KiB per CreatePipe nSize=0, which is much smaller than POSIX's
-            // typical 64 KiB. The drain-deadlock risk is therefore higher on
-            // Windows; concurrent drain on the Windows path is reserved for a
-            // future revision (v3 landed concurrent drain on POSIX only).
             let capturedStdout = try _drainBytes(stdoutRead)
             let capturedStderr = try _drainBytes(stderrRead)
 
@@ -148,15 +105,11 @@
         }
     }
 
-    // MARK: - Slot
-
     extension Process.Spawn {
-        /// Internal slot identifier used by the per-platform wiring helpers.
+
         @usableFromInline
         internal enum _StdioSlot { case stdout, stderr }
     }
-
-    // MARK: - Helpers
 
     extension Process.Spawn {
         @usableFromInline
@@ -221,63 +174,30 @@
             _ configuration: Configuration,
             actions: borrowing Windows.`32`.Kernel.Process.Spawn.Actions
         ) throws(Process.Error) -> Windows.`32`.Kernel.Process.Spawn.Result {
-            // Build a writable UTF-16 command line (CreateProcessW reserves the
-            // right to mutate it in place). Format: "<exe>" arg1 arg2 ...
-            // Every token — including the executable — is quoted per the
-            // documented Win32 convention so that whitespace, embedded
-            // quotes, and backslash runs in an argument cannot be
-            // misparsed into extra argv entries or an argument-injection
-            // surface on the child side (see `_quoteWindowsCommandLineArgument`).
+
             var commandLineString = _quoteWindowsCommandLineArgument(configuration.executable)
             for arg in configuration.arguments {
                 commandLineString += " " + _quoteWindowsCommandLineArgument(arg)
             }
             var commandLineUnits: [WCHAR] = Array(commandLineString.utf16)
-            commandLineUnits.append(0)  // NUL terminator
+            commandLineUnits.append(0)
 
-            // Build the UTF-16 environment block: each KEY=VALUE entry is
-            // NUL-terminated and the block ends with an additional NUL.
-            // Returns nil when the configuration inherits the parent's env.
             let envBlock: [WCHAR]? = _flattenWideEnvironment(configuration.environment)
 
-            // Build the UTF-16 working directory NUL-terminated.
             let cwdUnits: [WCHAR]? = configuration.workingDirectory.map { dir in
                 var units = Array(dir.utf16)
                 units.append(0)
                 return units
             }
 
-            // Build the UTF-16 executable path NUL-terminated. Win32 distinguishes
-            // lpApplicationName (the actual exe path) from lpCommandLine (which
-            // includes argv[0]); we pass the executable explicitly. A bare
-            // program name is resolved through PATH + PATHEXT first (see
-            // `Executable`) — CreateProcessW never searches when
-            // lpApplicationName is supplied — while the command line's first
-            // token stays the configured name.
             let resolvedExecutable = try Executable.resolve(configuration.executable)
             var executableUnits = Array(resolvedExecutable.utf16)
             executableUnits.append(0)
 
-            // `Windows.`32`.Kernel.Process.Spawn.Result` is `~Copyable` and
-            // non-`@frozen` across the module boundary, so it cannot flow
-            // through `Array.withUnsafe(Mutable)BufferPointer<R>` — the
-            // stdlib constrains that closure's return type `R` to
-            // `Copyable`. Every nested closure below therefore returns
-            // `Void`, and `spawn`'s result is captured by mutating this
-            // outer binding instead of being returned through them.
             var spawnedResult: Windows.`32`.Kernel.Process.Spawn.Result?
 
             do throws(Process.Error.Kernel) {
-                // All four buffers (executable, command line, working
-                // directory, environment) are accessed from inside one
-                // nested `withUnsafe(Mutable)BufferPointer` scope stack, so
-                // every pointer handed to `spawn` is provably live for the
-                // duration of the call. `cwdUnits`/`envBlock` previously had
-                // their pointers extracted via a top-level `?.withUnsafe...
-                // { $0.baseAddress }`, which let the guaranteed-valid window
-                // end before the pointer was ever used — nesting via
-                // `_withOptionalWideBuffer` below closes that gap the same
-                // way `executableUnits`/`commandLineUnits` already were.
+
                 try unsafe executableUnits.withUnsafeBufferPointer {
                     (
                         exePtr: UnsafeBufferPointer<WCHAR>
@@ -319,10 +239,7 @@
             }
 
             guard let result = consume spawnedResult else {
-                // Unreachable: the `do` block above either throws —
-                // handled by the `catch` above — or `spawn` succeeds and
-                // assigns `spawnedResult` before returning; no path exits
-                // normally without one or the other.
+
                 preconditionFailure(
                     "Windows.`32`.Kernel.Process.Spawn.spawn produced neither a result nor a thrown error"
                 )
@@ -330,33 +247,6 @@
             return result
         }
 
-        /// Runs `body` with a pointer to `array`'s contents kept alive and
-        /// valid for the entire call, or `nil` when `array` is `nil`.
-        ///
-        /// `array?.withUnsafeBufferPointer { $0.baseAddress }` (the prior
-        /// shape of this call site) lets the pointer's guaranteed-valid
-        /// window end the instant that inner call returns — the returned
-        /// pointer is only "live" by accident of the allocator not having
-        /// reused the backing storage yet before the caller dereferences
-        /// it. Nesting `body` *inside* `withUnsafeBufferPointer` instead
-        /// keeps `array` provably alive for every use of the pointer.
-        ///
-        /// `R` is intentionally `Copyable` (not `~Copyable`): the
-        /// implementation itself routes through
-        /// `Array.withUnsafeBufferPointer<R>`, whose own `R` the stdlib
-        /// constrains to `Copyable` — a `~Copyable` bound here would
-        /// promise a capability the body cannot actually honor. Callers
-        /// that need to hand a `~Copyable` value out of the `body`
-        /// closure (as `_spawnWithActions` does for
-        /// `Windows.`32`.Kernel.Process.Spawn.Result`) capture it via an
-        /// outer `var` instead of returning it through `R`.
-        ///
-        /// Not `@usableFromInline`: `WCHAR` is only `internal`-visible in
-        /// this file (imported via `internal import WinSDK`), and
-        /// `@usableFromInline` requires every type in the signature to be
-        /// at least as visible as the declaration itself. Nothing in this
-        /// module calls this helper from an `@inlinable` context, so
-        /// plain `internal` is sufficient.
         internal static func _withOptionalWideBuffer<R>(
             _ array: [WCHAR]?,
             _ body: (UnsafePointer<WCHAR>?) throws(Process.Error.Kernel) -> R
@@ -373,29 +263,14 @@
             }
         }
 
-        /// Closes the write end of `pipe` (parent's copy after the child
-        /// has been spawned with the write end inherited) and returns the
-        /// read end. Errors flow back as ``Process/Error/capture(_:)``.
         @usableFromInline
         internal static func _closeWriteEnd(
             _ pipe: consuming Windows.`32`.Kernel.Pipe.Descriptors
         ) throws(Process.Error) -> Windows.`32`.Kernel.Descriptor {
-            // The Tagged-Pair Descriptors does not have a typed Close.write
-            // helper on the Windows side yet (v2 ships the read accessor and
-            // deinit-close). Extract the read end manually.
-            //
-            // `Descriptors.read` / `.write` are borrowing `_read` coroutine
-            // accessors (they yield into the underlying `Pair`'s fields),
-            // so they can only be borrowed, not consumed — unlike
-            // `Tagged.underlying` and `Pair.first` / `.second`, which are
-            // `@frozen` public STORED properties (frozen even though the
-            // wrapped `Descriptor` itself is non-frozen) and therefore
-            // legal to consume individually across the module boundary.
-            // Route through those instead of the borrowing accessors.
+
             let pair = consume pipe.underlying
             let read = pair.first
-            // The write end is closed when `pair.second` is dropped below
-            // (deinit calls CloseHandle).
+
             _ = pair.second
             return read
         }
@@ -407,11 +282,6 @@
             var buffer: [UInt8] = []
             var chunk = [UInt8](repeating: 0, count: 4096)
 
-            // `_rawValue`, not `_raw`: `Descriptor._raw` is `package`-level
-            // in swift-windows-32 and inaccessible here; `_rawValue` is the
-            // public accessor meant for exactly this cross-module read
-            // (see `Process.Handle.wait()`'s matching use on the same
-            // type).
             let handle = unsafe UnsafeMutableRawPointer(bitPattern: descriptor._rawValue)
             guard let handle else {
                 throw .capture(.win32(UInt32(ERROR_INVALID_HANDLE)))
@@ -438,19 +308,11 @@
                 if bytesRead == 0 { break }
                 buffer.append(contentsOf: chunk.prefix(Int(bytesRead)))
             }
-            // Descriptor's deinit closes the handle.
+
             _ = consume descriptor
             return buffer
         }
 
-        /// Flattens the configuration's environment dictionary into a UTF-16
-        /// NUL-separated, double-NUL-terminated block suitable for
-        /// `CreateProcessW`'s `lpEnvironment` parameter (with
-        /// `CREATE_UNICODE_ENVIRONMENT`).
-        ///
-        /// Not `@usableFromInline`: see `_withOptionalWideBuffer`'s doc
-        /// comment — `WCHAR` is only `internal`-visible in this file, and
-        /// nothing calls this helper from an `@inlinable` context.
         internal static func _flattenWideEnvironment(
             _ environment: [Swift.String: Swift.String]?
         ) -> [WCHAR]? {
@@ -462,11 +324,10 @@
                 block.append(contentsOf: entry.utf16)
                 block.append(0)
             }
-            block.append(0)  // double-NUL terminator
+            block.append(0)
             return block
         }
 
-        /// Maps a raw Win32 error code into ``Windows/32/Kernel/Process/Error``.
         @usableFromInline
         internal static func _processErrorFromCode(
             _ code: Error_Primitives.Error.Code
@@ -475,38 +336,10 @@
         }
     }
 
-#endif  // os(Windows)
+#endif
 
-// MARK: - Command-line quoting (platform-independent)
-//
-// This algorithm has no dependency on WinSDK — it is a pure `String`
-// transform — so it is compiled and unit-testable on every platform,
-// unlike the rest of this file. Keeping it un-gated lets the regression
-// test for F-002 run as a real `swift test` on any host, not only on a
-// Windows CI runner that (per the accompanying remediation report) does
-// not yet exist for this package.
 extension Process.Spawn {
-    /// Quotes a single command-line token per the documented Win32
-    /// convention (mirrors `CommandLineToArgvW`'s parsing rules), so the
-    /// child process reconstructs the exact `argv` the caller supplied.
-    ///
-    /// Without this, ``_spawnWithActions(_:actions:)`` previously joined
-    /// `executable`/`arguments` with naive spaces: an argument
-    /// containing a space split into two argv entries in the child, and
-    /// an argument containing `"` (or a crafted backslash-quote
-    /// sequence) could inject additional, attacker-controlled argv
-    /// entries — including flags the caller never passed.
-    ///
-    /// Algorithm (Microsoft's documented backslash/quote escaping):
-    /// - An argument with no whitespace, tab, or `"` and that is
-    ///   non-empty needs no quoting and is passed through unchanged.
-    /// - Otherwise the argument is wrapped in `"`. Within it, a run of
-    ///   `N` backslashes immediately followed by a `"` becomes `2N + 1`
-    ///   backslashes then `\"` (escaping both the run and the quote); a
-    ///   run of `N` backslashes at the end of the argument (immediately
-    ///   before the closing `"` this function appends) becomes `2N`
-    ///   backslashes (only the run is escaped, since the following `"`
-    ///   is the delimiter, not part of the argument).
+
     @usableFromInline
     internal static func _quoteWindowsCommandLineArgument(_ argument: Swift.String) -> Swift.String
     {
@@ -527,22 +360,20 @@ extension Process.Spawn {
                 continue
             }
             if character == "\"" {
-                // Escape every backslash in the run, then escape the quote.
+
                 quoted += Swift.String(repeating: "\\", count: backslashRun * 2 + 1)
                 quoted += "\""
                 backslashRun = 0
                 continue
             }
             if backslashRun > 0 {
-                // An unescaped run followed by a non-quote character
-                // stays literal — only runs abutting a `"` are doubled.
+
                 quoted += Swift.String(repeating: "\\", count: backslashRun)
                 backslashRun = 0
             }
             quoted.append(character)
         }
-        // A trailing run sits immediately before the closing quote we
-        // are about to append, so it must be doubled.
+
         quoted += Swift.String(repeating: "\\", count: backslashRun * 2)
         quoted += "\""
         return quoted
