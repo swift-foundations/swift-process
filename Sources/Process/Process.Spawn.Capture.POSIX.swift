@@ -381,7 +381,7 @@
             var buffer: [UInt8] = []
             var chunk = [UInt8](repeating: 0, count: 4096)
             while true {
-                let n = try unsafe chunk.withUnsafeMutableBufferPointer {
+                let n = try chunk.withUnsafeMutableBufferPointer {
                     (
                         raw: inout UnsafeMutableBufferPointer<UInt8>
                     ) throws(ISO_9945.Kernel.IO.Read.Error) -> Int in
@@ -446,8 +446,8 @@
                     )
                 )
 
-                if stdoutDone { unsafe (entries[0].descriptor = -1) }
-                if stderrDone { unsafe (entries[1].descriptor = -1) }
+                if stdoutDone { (entries[0].descriptor = -1) }
+                if stderrDone { (entries[1].descriptor = -1) }
 
                 do throws(Error_Primitives.Error) {
                     _ = try POSIX.Kernel.Poll.poll(&entries, timeout: -1)
@@ -458,7 +458,7 @@
                 if !stdoutDone, !entries[0].returned.isEmpty {
                     let n: Int
                     do throws(ISO_9945.Kernel.IO.Read.Error) {
-                        n = try unsafe chunk.withUnsafeMutableBufferPointer {
+                        n = try chunk.withUnsafeMutableBufferPointer {
                             (
                                 raw: inout UnsafeMutableBufferPointer<UInt8>
                             ) throws(ISO_9945.Kernel.IO.Read.Error) -> Int in
@@ -481,7 +481,7 @@
                 if !stderrDone, !entries[1].returned.isEmpty {
                     let n: Int
                     do throws(ISO_9945.Kernel.IO.Read.Error) {
-                        n = try unsafe chunk.withUnsafeMutableBufferPointer {
+                        n = try chunk.withUnsafeMutableBufferPointer {
                             (
                                 raw: inout UnsafeMutableBufferPointer<UInt8>
                             ) throws(ISO_9945.Kernel.IO.Read.Error) -> Int in
@@ -577,13 +577,13 @@
             // thread without engaging the `~Copyable` `Descriptor` type
             // (which has no public "release-without-close" API).
             var fds: (Int32, Int32) = (-1, -1)
-            let pipeResult: Int32 = unsafe withUnsafeMutablePointer(to: &fds) { tuple -> Int32 in
+            let pipeResult: Int32 = withUnsafeMutablePointer(to: &fds) { tuple -> Int32 in
                 unsafe tuple.withMemoryRebound(to: Int32.self, capacity: 2) { fdPtr -> Int32 in
                     unsafe pipe(fdPtr)
                 }
             }
             guard pipeResult == 0 else {
-                throw .capture(.posix(unsafe errno))
+                throw .capture(.posix( errno))
             }
 
             let readFd = fds.0
@@ -602,8 +602,8 @@
                 }
             } catch {
                 // Thread creation failed: close both ends.
-                unsafe _closeRawFd(readFd)
-                unsafe _closeRawFd(writeFd)
+                _closeRawFd(readFd)
+                _closeRawFd(writeFd)
                 throw .capture(_threadErrorCode(error))
             }
 
@@ -635,10 +635,10 @@
                 // Write one byte to wake the watchdog. Failure is
                 // non-fatal — closing the write end below also raises
                 // POLLHUP on the read end, which the watchdog observes.
-                unsafe _writeWakeByte(writeFd)
+                _writeWakeByte(writeFd)
                 // Close the write end so the watchdog sees POLLHUP if
                 // the byte was lost (defensive).
-                unsafe _closeRawFd(writeFd)
+                _closeRawFd(writeFd)
             }
 
             // Block until the watchdog has exited. The watchdog never
@@ -655,7 +655,7 @@
 
             // Now safe to close the read end.
             if readFd >= 0 {
-                unsafe _closeRawFd(readFd)
+                _closeRawFd(readFd)
             }
         }
 
@@ -680,12 +680,12 @@
             // `borrowing Descriptor` — same `~Copyable` snag as the pipe
             // construction. Direct platform call is the cleanest path.
             var pollfdEntry = pollfd(fd: shutdownReadFd, events: Int16(POLLIN), revents: 0)
-            let result: Int32 = unsafe withUnsafeMutablePointer(to: &pollfdEntry) { ptr -> Int32 in
+            let result: Int32 = withUnsafeMutablePointer(to: &pollfdEntry) { ptr -> Int32 in
                 // Retry on EINTR — same policy POSIX.Kernel.Poll.poll uses.
                 while true {
                     let r = unsafe poll(ptr, 1, timeoutMilliseconds)
                     if r >= 0 { return r }
-                    if unsafe errno != EINTR { return r }
+                    if errno != EINTR { return r }
                 }
             }
 
@@ -712,7 +712,7 @@
         @usableFromInline
         internal static func _writeWakeByte(_ fd: Int32) {
             var byte: UInt8 = 0
-            unsafe withUnsafePointer(to: &byte) { ptr in
+            withUnsafePointer(to: &byte) { ptr in
                 _ = unsafe write(fd, ptr, 1)
             }
         }
@@ -721,7 +721,7 @@
         /// teardown where the fd is owned by this file's bookkeeping.
         @usableFromInline
         internal static func _closeRawFd(_ fd: Int32) {
-            _ = unsafe close(fd)
+            _ = close(fd)
         }
 
         /// Extracts the `Error_Primitives.Error.Code` from a
